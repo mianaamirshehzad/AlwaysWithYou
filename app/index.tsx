@@ -1,12 +1,12 @@
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 
-import RoleSelectionScreen from '@/src/screens/RoleSelectionScreen';
+import RoleSelectionScreen from '../src/screens/Authentication/RoleSelectionScreen';
 
 export default function IndexRoute() {
   const router = useRouter();
 
-  return <RoleSelectionScreen onContinue={() => router.replace('/(tabs)')} />;
+  return <RoleSelectionScreen onContinue={(role) => router.replace({ pathname: '/signup', params: { role } })} />;
 }
 
 

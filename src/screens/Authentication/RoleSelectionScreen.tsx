@@ -2,14 +2,21 @@ import * as React from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import Images from '@/src/assets/Images';
-import Button from '@/src/components/Button';
-import RoleSelectionRadioCard from '@/src/components/RoleSelectionRadioCard';
+import Images from '../../assets/Images';
+import Button from '../../components/Button';
+import RoleSelectionRadioCard from '../../components/RoleSelectionRadioCard';
+import { useNavigation } from 'expo-router';
 
 type Role = 'child' | 'parent';
 
 export default function RoleSelectionScreen(props: { onContinue?: (role: Role) => void }) {
+  const navigation = useNavigation();
   const [role, setRole] = React.useState<Role>('child');
+
+  const handleContinuePress = () => {
+    // @ts-expect-error: type issue with useNavigation from expo-router
+    navigation.navigate('signup' as never, { role } as never);
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -43,7 +50,7 @@ export default function RoleSelectionScreen(props: { onContinue?: (role: Role) =
         </View>
 
         <View style={styles.bottom}>
-          <Button label="Continue" showArrow onPress={() => props.onContinue?.(role)} />
+          <Button label="Continue" showArrow onPress={handleContinuePress} />
         </View>
       </ScrollView>
     </SafeAreaView>
