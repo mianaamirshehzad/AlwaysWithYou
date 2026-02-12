@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import Colors from '@/src/assets/Colors';
 import Images from '../../assets/Images';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
@@ -99,11 +100,11 @@ export default function SignupScreen() {
 }
 
 const PALETTE = {
-  bg: '#062B22',
-  text: '#FFFFFF',
-  muted: 'rgba(255,255,255,0.65)',
-  subtle: 'rgba(255,255,255,0.55)',
-  link: '#55E08F',
+  bg: Colors.auth.bg,
+  text: Colors.auth.text,
+  muted: Colors.alpha.white65,
+  subtle: Colors.auth.subtle,
+  link: Colors.brand.primary,
 } as const;
 
 const styles = StyleSheet.create({
@@ -125,9 +126,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: Colors.alpha.white06,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: Colors.alpha.white08,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -141,7 +142,7 @@ const styles = StyleSheet.create({
   title: { color: PALETTE.text, fontSize: 34, lineHeight: 42, fontWeight: '800', marginTop: 6 },
   subtitle: { color: PALETTE.muted, fontSize: 16, lineHeight: 24, fontWeight: '600' },
   form: { gap: 18, marginTop: 18 },
-  terms: { color: 'rgba(255,255,255,0.34)', fontSize: 12, lineHeight: 18, marginTop: 12, fontWeight: '600' },
+  terms: { color: Colors.auth.terms, fontSize: 12, lineHeight: 18, marginTop: 12, fontWeight: '600' },
   link: { color: PALETTE.link, fontWeight: '800' },
 
   footer: { marginTop: 'auto', alignItems: 'center', gap: 14, paddingTop: 16 },
@@ -150,13 +151,13 @@ const styles = StyleSheet.create({
     height: 220,
     borderRadius: 110,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: Colors.alpha.white08,
     marginBottom: 2,
   },
   circleImage: { width: '100%', height: '100%', opacity: 0.22 },
   circleOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(6,43,34,0.45)',
+    backgroundColor: Colors.auth.overlayStrong,
   },
   cta: { marginTop: 2 },
   loginRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },

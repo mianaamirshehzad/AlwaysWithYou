@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import Colors from '@/src/assets/Colors';
 import Images from '../../assets/Images';
 import Button from '../../components/Button';
 import RoleSelectionRadioCard from '../../components/RoleSelectionRadioCard';
@@ -58,11 +59,11 @@ export default function RoleSelectionScreen(props: { onContinue?: (role: Role) =
 }
 
 const PALETTE = {
-  bg: '#062B22',
-  text: '#FFFFFF',
-  muted: 'rgba(255,255,255,0.70)',
-  subtle: 'rgba(255,255,255,0.55)',
-  heroBg: '#F3E7DB',
+  bg: Colors.auth.bg,
+  text: Colors.auth.text,
+  muted: Colors.auth.muted,
+  subtle: Colors.auth.subtle,
+  heroBg: Colors.auth.heroBg,
 } as const;
 
 const styles = StyleSheet.create({

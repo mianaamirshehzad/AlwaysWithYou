@@ -5,7 +5,7 @@ import { ExternalLink } from './ExternalLink';
 import { MonoText } from './StyledText';
 import { Text, View } from './Themed';
 
-import Colors from '@/constants/Colors';
+import Colors from '@/src/assets/Colors';
 
 export default function EditScreenInfo({ path }: { path: string }) {
   return (
@@ -13,22 +13,22 @@ export default function EditScreenInfo({ path }: { path: string }) {
       <View style={styles.getStartedContainer}>
         <Text
           style={styles.getStartedText}
-          lightColor="rgba(0,0,0,0.8)"
-          darkColor="rgba(255,255,255,0.8)">
+          lightColor={Colors.alpha.black80}
+          darkColor={Colors.alpha.white80}>
           Open up the code for this screen:
         </Text>
 
         <View
           style={[styles.codeHighlightContainer, styles.homeScreenFilename]}
-          darkColor="rgba(255,255,255,0.05)"
-          lightColor="rgba(0,0,0,0.05)">
+          darkColor={Colors.alpha.white05}
+          lightColor={Colors.alpha.black05}>
           <MonoText>{path}</MonoText>
         </View>
 
         <Text
           style={styles.getStartedText}
-          lightColor="rgba(0,0,0,0.8)"
-          darkColor="rgba(255,255,255,0.8)">
+          lightColor={Colors.alpha.black80}
+          darkColor={Colors.alpha.white80}>
           Change any of the text, save the file, and your app will automatically update.
         </Text>
       </View>

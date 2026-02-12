@@ -3,6 +3,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import Colors from '@/src/assets/Colors';
+
 type ButtonProps = {
   onPress: () => void;
   /**
@@ -71,10 +73,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#55E08F',
+    backgroundColor: Colors.brand.primary,
     ...(Platform.select({
       ios: {
-        shadowColor: '#000',
+        shadowColor: Colors.dark.background,
         shadowOpacity: 0.22,
         shadowRadius: 18,
         shadowOffset: { width: 0, height: 10 },
@@ -84,7 +86,7 @@ const styles = StyleSheet.create({
     }) as object),
   },
   disabled: {
-    backgroundColor: '#55E08F',
+    backgroundColor: Colors.brand.primary,
   },
   inner: {
     flexDirection: 'row',
@@ -93,7 +95,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   label: {
-    color: '#0E1A16',
+    color: Colors.brand.onPrimary,
     fontSize: 20,
     fontWeight: '700',
     letterSpacing: 0.2,

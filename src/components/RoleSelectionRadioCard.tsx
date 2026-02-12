@@ -2,6 +2,8 @@ import * as React from 'react';
 import { StyleProp, TextStyle, ViewStyle, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
+import Colors from '@/src/assets/Colors';
+
 type RoleSelectionRadioCardProps = {
   /** Defaults to "I'm a Child" */
   title?: string;
@@ -50,7 +52,7 @@ export function RoleSelectionRadioCard({
         style,
       ]}>
       <View style={[styles.iconWrap, selected && styles.iconWrapSelected]}>
-        <Ionicons name={iconName} size={22} color={selected ? PALETTE.accent : 'rgba(255,255,255,0.78)'} />
+        <Ionicons name={iconName} size={22} color={selected ? PALETTE.accent : Colors.alpha.white78} />
       </View>
 
       <View style={styles.textWrap}>
@@ -72,15 +74,15 @@ export function RoleSelectionRadioCard({
 export default RoleSelectionRadioCard;
 
 const PALETTE = {
-  bg: '#062B22',
-  chipBg: 'rgba(255,255,255,0.06)',
-  chipBorder: 'rgba(255,255,255,0.08)',
-  chipSelectedBg: 'rgba(123,204,181,0.14)',
-  chipSelectedBorder: 'rgba(123,204,181,0.60)',
-  text: '#FFFFFF',
-  subtle: 'rgba(255,255,255,0.60)',
-  accent: '#7BCCB5',
-  accentSoft: 'rgba(123,204,181,0.16)',
+  bg: Colors.auth.bg,
+  chipBg: Colors.alpha.white06,
+  chipBorder: Colors.alpha.white08,
+  chipSelectedBg: Colors.auth.roleSelectedBg,
+  chipSelectedBorder: Colors.auth.roleSelectedBorder,
+  text: Colors.auth.text,
+  subtle: Colors.alpha.white60,
+  accent: Colors.auth.roleAccent,
+  accentSoft: Colors.auth.roleAccentSoft,
 } as const;
 
 const styles = StyleSheet.create({
@@ -101,7 +103,7 @@ const styles = StyleSheet.create({
     borderColor: PALETTE.chipSelectedBorder,
   },
   containerDisabled: {
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: Colors.alpha.white06,
   },
   iconWrap: {
     width: 56,
@@ -109,7 +111,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: Colors.alpha.white08,
   },
   iconWrapSelected: {
     backgroundColor: PALETTE.accentSoft,
@@ -133,7 +135,7 @@ const styles = StyleSheet.create({
     height: 26,
     borderRadius: 13,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: Colors.alpha.white25,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import Colors from '@/src/assets/Colors';
 import Images from '../../assets/Images';
 import Button from '../../components/Button';
 
@@ -143,7 +144,7 @@ export default function InviteCodeLinkingScreen() {
             </Pressable>
 
             <View style={styles.ctaWrap}>
-              <Button label="Link Account" onPress={() => {}} disabled={!canSubmit} />
+              <Button label="Link Account" onPress={() => router.replace('/(tabs)')} disabled={!canSubmit} />
             </View>
           </>
         ) : (
@@ -164,12 +165,12 @@ export default function InviteCodeLinkingScreen() {
 }
 
 const PALETTE = {
-  bg: '#062B22',
-  text: '#FFFFFF',
-  muted: 'rgba(255,255,255,0.70)',
-  subtle: 'rgba(255,255,255,0.55)',
-  chipBorder: 'rgba(255,255,255,0.08)',
-  accent: '#55E08F',
+  bg: Colors.auth.bg,
+  text: Colors.auth.text,
+  muted: Colors.auth.muted,
+  subtle: Colors.auth.subtle,
+  chipBorder: Colors.auth.chipBorder,
+  accent: Colors.brand.primary,
 } as const;
 
 const styles = StyleSheet.create({
@@ -181,14 +182,14 @@ const styles = StyleSheet.create({
     height: 170,
     borderRadius: 28,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: Colors.alpha.white06,
   },
   heroImage: { width: '100%', height: '100%' },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(6,43,34,0.30)' },
+  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: Colors.auth.heroOverlay },
 
   segmentWrap: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: Colors.alpha.white06,
     borderRadius: 999,
     padding: 6,
     borderWidth: 1,
@@ -196,7 +197,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   segment: { flex: 1, borderRadius: 999, paddingVertical: 12, alignItems: 'center' },
-  segmentOn: { backgroundColor: 'rgba(85,224,143,0.16)' },
+  segmentOn: { backgroundColor: Colors.brand.primarySoftBg },
   segmentText: { color: PALETTE.subtle, fontSize: 14, fontWeight: '700' },
   segmentTextOn: { color: PALETTE.text },
 
@@ -208,7 +209,7 @@ const styles = StyleSheet.create({
     width: 46,
     height: 56,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: Colors.alpha.white06,
     borderWidth: 1,
     borderColor: PALETTE.chipBorder,
     color: PALETTE.text,
@@ -223,7 +224,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 18,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: Colors.alpha.white06,
     borderWidth: 1,
     borderColor: PALETTE.chipBorder,
     flexDirection: 'row',
@@ -236,7 +237,7 @@ const styles = StyleSheet.create({
 
   shareCard: {
     marginTop: 6,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: Colors.alpha.white06,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: PALETTE.chipBorder,

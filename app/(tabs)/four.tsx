@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import Colors from '@/src/assets/Colors';
 
-export default function PlanTabRoute() {
+export default function ProfileTabRoute() {
   return <View style={styles.container} />;
 }
 

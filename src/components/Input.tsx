@@ -3,6 +3,8 @@ import * as React from 'react';
 import type { StyleProp, TextInputProps, TextStyle, ViewStyle } from 'react-native';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import Colors from '@/src/assets/Colors';
+
 type InputProps = {
   label: string;
   value: string;
@@ -66,13 +68,13 @@ export default function Input({
 }
 
 const PALETTE = {
-  label: 'rgba(255,255,255,0.70)',
-  placeholder: 'rgba(255,255,255,0.22)',
-  text: 'rgba(255,255,255,0.70)',
-  icon: 'rgba(255,255,255,0.30)',
-  fieldBg: 'rgba(255,255,255,0.06)',
-  fieldBorder: 'rgba(255,255,255,0.08)',
-  accent: '#55E08F',
+  label: Colors.alpha.white70,
+  placeholder: Colors.alpha.white22,
+  text: Colors.alpha.white70,
+  icon: Colors.alpha.white30,
+  fieldBg: Colors.alpha.white06,
+  fieldBorder: Colors.alpha.white08,
+  accent: Colors.brand.primary,
 } as const;
 
 const styles = StyleSheet.create({
