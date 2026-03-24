@@ -23,9 +23,10 @@ export default function TabLayout() {
           backgroundColor: Colors.dashboard.bg,
           borderTopWidth: 0,
           elevation: 0,
-          height: Platform.select({ ios: 88, default: 72 }),
+          height: Platform.select({ ios: 96, default: 72 }),
           paddingTop: 8,
-          paddingBottom: Platform.select({ ios: 24, default: 10 }),
+          paddingBottom: Platform.select({ ios: 30, default: 10 }),
+          marginBottom: Platform.select({ ios: 12, default: 0 }),
         },
         tabBarLabelStyle: {
           fontSize: 11,

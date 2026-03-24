@@ -19,7 +19,7 @@ export default function ChildDashboardScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.screen}>
-        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
           <View style={styles.topBar}>
             <Text style={styles.topBarTitle}>Dashboard</Text>
             <View style={styles.topBarRight}>
@@ -27,7 +27,9 @@ export default function ChildDashboardScreen() {
               <IconButton iconName="settings-outline" accessibilityLabel="Settings" />
             </View>
           </View>
+        </View>
 
+        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
           <ProfileGreeting name="Sarah" headline="Mom is doing well today" avatarSource={Images.hands} />
 
           <SummaryCard percent={75} completedLabel="3 completed" missedLabel="1 missed" streakLabel="5 DAY STREAK" />
@@ -60,7 +62,7 @@ export default function ChildDashboardScreen() {
           </View>
         </ScrollView>
 
-        <FloatingActionButton onPress={() => setCreateReminderOpen(true)} style={{ marginBottom:-130 }} />
+        <FloatingActionButton onPress={() => setCreateReminderOpen(true)} style={{ marginBottom:-100 }} />
         <CreateNewReminderModal visible={createReminderOpen} onClose={() => setCreateReminderOpen(false)} />
       </View>
     </SafeAreaView>
@@ -90,10 +92,16 @@ function SegmentButton(props: { label: string; active: boolean; onPress: () => v
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.dashboard.bg },
   screen: { flex: 1 },
+  header: {
+    backgroundColor: Colors.dashboard.bg,
+    paddingHorizontal: 18,
+    paddingBottom: 6,
+    zIndex: 10,
+  },
   container: {
     flexGrow: 1,
     paddingHorizontal: 18,
-    paddingTop: 8,
+    paddingTop: 10,
     paddingBottom: 24,
     gap: 16,
   },
