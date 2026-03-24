@@ -12,12 +12,16 @@ type Props = {
   tabBarHeight?: number;
   offset?: number;
   style?: StyleProp<ViewStyle>;
+  iconName?: React.ComponentProps<typeof Ionicons>['name'];
+  iconSize?: number;
 };
 
 export default function FloatingActionButton(props: Props) {
   const insets = useSafeAreaInsets();
   const tabBarHeight = props.tabBarHeight ?? 72;
   const offset = props.offset ?? 16;
+  const iconName = props.iconName ?? 'add';
+  const iconSize = props.iconSize ?? 35;
 
   return (
     <Pressable
@@ -31,7 +35,7 @@ export default function FloatingActionButton(props: Props) {
         },
         props.style,
       ]}>
-      <Ionicons name="add" size={35} color={Colors.dashboard.bg} />
+      <Ionicons name={iconName} size={iconSize} color={Colors.dashboard.bg} />
     </Pressable>
   );
 }

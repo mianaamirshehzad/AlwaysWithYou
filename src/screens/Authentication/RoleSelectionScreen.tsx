@@ -6,17 +6,14 @@ import Colors from '@/src/assets/Colors';
 import Images from '../../assets/Images';
 import Button from '../../components/Button';
 import RoleSelectionRadioCard from '../../components/RoleSelectionRadioCard';
-import { useNavigation } from 'expo-router';
 
 type Role = 'child' | 'parent';
 
 export default function RoleSelectionScreen(props: { onContinue?: (role: Role) => void }) {
-  const navigation = useNavigation();
   const [role, setRole] = React.useState<Role>('child');
 
   const handleContinuePress = () => {
-    // @ts-expect-error: type issue with useNavigation from expo-router
-    navigation.navigate('signup' as never, { role } as never);
+    props.onContinue?.(role);
   };
 
   return (

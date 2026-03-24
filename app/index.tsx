@@ -6,7 +6,17 @@ import RoleSelectionScreen from '../src/screens/Authentication/RoleSelectionScre
 export default function IndexRoute() {
   const router = useRouter();
 
-  return <RoleSelectionScreen onContinue={(role) => router.replace({ pathname: '/signup', params: { role } })} />;
+  return (
+    <RoleSelectionScreen
+      onContinue={(role) => {
+        if (role === 'parent') {
+          router.replace('/(parent-tabs)');
+          return;
+        }
+        router.replace({ pathname: '/signup', params: { role } });
+      }}
+    />
+  );
 }
 
 
