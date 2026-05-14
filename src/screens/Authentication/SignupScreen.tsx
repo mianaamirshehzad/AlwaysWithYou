@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import * as React from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import Input from '../../components/Input';
 
 export default function SignupScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
 
   const [email, setEmail] = React.useState('');
   const [phone, setPhone] = React.useState('');
@@ -20,7 +21,7 @@ export default function SignupScreen() {
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Pressable
-            onPress={() => router.back()}
+            onPress={() => (navigation.canGoBack() ? navigation.goBack() : router.replace('/'))}
             hitSlop={10}
             accessibilityRole="button"
             accessibilityLabel="Back"

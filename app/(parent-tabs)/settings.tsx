@@ -1,13 +1,7 @@
 import * as React from 'react';
-import { StyleSheet, View } from 'react-native';
-
-import Colors from '@/src/assets/Colors';
+import ParentSetting from '../../src/screens/Parent/ParentSetting';
 
 export default function ParentSettingsTabRoute() {
-  return <View style={styles.container} />;
+  return <ParentSetting />;
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.dashboard.bg },
-});
 

@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import * as React from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -102,6 +102,7 @@ function InviteCodeEntry(props: { value: string; onChange: (code: string) => voi
 
 export default function InviteCodeLinkingScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const [tab, setTab] = React.useState<TabKey>('have');
   const [code, setCode] = React.useState('');
 
@@ -112,7 +113,11 @@ export default function InviteCodeLinkingScreen() {
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="Back">
+          <Pressable
+            onPress={() => (navigation.canGoBack() ? navigation.goBack() : router.replace('/'))}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Back">
             <Ionicons name="arrow-back" size={22} color={PALETTE.text} />
           </Pressable>
           <Text style={styles.headerTitle}>ConnectFamily</Text>

@@ -7,6 +7,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import Colors from '@/src/assets/Colors';
 import Button from '../../components/Button';
 import ReminderForCard from '../../components/Dashboard/ReminderForCard';
+import UserProfileHeader from '../../components/UserProfileHeader';
 
 type ReminderType = 'medicine' | 'water' | 'rest' | 'walk' | 'parkTime' | 'callMe';
 type Frequency = 'daily' | 'weekly' | 'custom';
@@ -56,18 +57,7 @@ export default function CreateNewReminderModal(props: { visible: boolean; onClos
             </View>
 
             <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-              <View style={styles.toBlock}>
-                <View style={styles.avatarWrap}>
-                  <View style={styles.avatar}>
-                    <Ionicons name="person" size={22} color={Colors.alpha.white55} />
-                  </View>
-                  <View style={styles.checkBadge}>
-                    <Ionicons name="checkmark" size={12} color={Colors.dashboard.bg} />
-                  </View>
-                </View>
-                <Text style={styles.toTitle}>For Mom</Text>
-                <Text style={styles.toSub}>Tap to change</Text>
-              </View>
+              <UserProfileHeader name="For Mom" subtitle="Tap to change" size="md" showBadge />
 
               <Text style={styles.sectionKicker}>WHAT&apos;S THIS REMINDER FOR?</Text>
               <View style={styles.reminderGrid}>
@@ -260,34 +250,6 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 15, paddingBottom: 8 },
   headerTitle: { color: Colors.dashboard.text, fontSize: 16, fontWeight: '900' },
   content: { paddingBottom: 18, gap: 16 },
-
-  toBlock: { alignItems: 'center', gap: 6, paddingTop: 6 },
-  avatarWrap: { position: 'relative' },
-  avatar: {
-    width: 62,
-    height: 62,
-    borderRadius: 999,
-    backgroundColor: Colors.dashboard.surfaceStrong,
-    borderWidth: 1,
-    borderColor: Colors.dashboard.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkBadge: {
-    position: 'absolute',
-    right: 2,
-    bottom: 2,
-    width: 18,
-    height: 18,
-    borderRadius: 999,
-    backgroundColor: Colors.dashboard.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: Colors.dashboard.bg,
-  },
-  toTitle: { color: Colors.dashboard.text, fontSize: 16, fontWeight: '900' },
-  toSub: { color: Colors.alpha.white45, fontSize: 12, fontWeight: '800' },
 
   sectionKicker: { color: Colors.alpha.white35, fontSize: 11, letterSpacing: 1.2, fontWeight: '900' },
   reminderGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
