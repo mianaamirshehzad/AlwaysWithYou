@@ -149,7 +149,14 @@ export default function InviteCodeLinkingScreen() {
             </Pressable>
 
             <View style={styles.ctaWrap}>
-              <Button label="Link Account" onPress={() => router.replace('/(tabs)')} disabled={!canSubmit} />
+              <Button
+                label="Link Account"
+                onPress={() => {
+                  router.dismissAll();
+                  router.replace('/(tabs)');
+                }}
+                disabled={!canSubmit}
+              />
             </View>
           </>
         ) : (

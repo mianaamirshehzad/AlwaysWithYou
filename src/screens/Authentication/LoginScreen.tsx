@@ -9,7 +9,7 @@ import Images from '../../assets/Images';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 
-export default function SignupScreen() {
+export default function LoginScreen() {
   const router = useRouter();
   const navigation = useNavigation();
 
@@ -29,13 +29,13 @@ export default function SignupScreen() {
             <Ionicons name="chevron-back" size={20} color={PALETTE.text} />
           </Pressable>
 
-          <Text style={styles.headerKicker}>SIGN UP</Text>
+          <Text style={styles.headerKicker}>LOGIN</Text>
           <View style={{ width: 40 }} />
         </View>
 
         <View style={styles.content}>
-          <Text style={styles.title}>Create your account</Text>
-          <Text style={styles.subtitle}>Secure your connection with your family today.</Text>
+          <Text style={styles.title}>Welcome back</Text>
+          <Text style={styles.subtitle}>Log in to stay connected with your family.</Text>
 
           <View style={styles.form}>
             <Input
@@ -60,18 +60,6 @@ export default function SignupScreen() {
               iconName="call-outline"
             />
           </View>
-
-          <Text style={styles.terms}>
-            By creating an account, you agree to our{' '}
-            <Text style={styles.link} onPress={() => {}}>
-              Terms of Service
-            </Text>{' '}
-            and{' '}
-            <Text style={styles.link} onPress={() => {}}>
-              Privacy Policy
-            </Text>
-            .
-          </Text>
         </View>
 
         <View style={styles.footer}>
@@ -81,17 +69,20 @@ export default function SignupScreen() {
           </View>
 
           <Button
-            label="Create Account"
+            label="Login"
             showArrow
-            arrowIconName="person-add-outline"
-            onPress={() => router.push('/invite')}
+            arrowIconName="log-in-outline"
+            onPress={() => {
+              router.dismissAll();
+              router.replace('/(tabs)');
+            }}
             style={styles.cta}
           />
 
-          <View style={styles.loginRow}>
-            <Text style={styles.loginText}>Already have an account?</Text>
-            <Pressable onPress={() => router.push('/login')} hitSlop={10} accessibilityRole="button">
-              {({ pressed }) => <Text style={[styles.loginLink, { opacity: pressed ? 0.9 : 1 }]}>Login</Text>}
+          <View style={styles.signupRow}>
+            <Text style={styles.signupText}>Don&apos;t have an account?</Text>
+            <Pressable onPress={() => router.push('/signup')} hitSlop={10} accessibilityRole="button">
+              {({ pressed }) => <Text style={[styles.signupLink, { opacity: pressed ? 0.9 : 1 }]}>Create Account</Text>}
             </Pressable>
           </View>
         </View>
@@ -143,8 +134,6 @@ const styles = StyleSheet.create({
   title: { color: PALETTE.text, fontSize: 34, lineHeight: 42, fontWeight: '800', marginTop: 6 },
   subtitle: { color: PALETTE.muted, fontSize: 16, lineHeight: 24, fontWeight: '600' },
   form: { gap: 18, marginTop: 18 },
-  terms: { color: Colors.auth.terms, fontSize: 12, lineHeight: 18, marginTop: 12, fontWeight: '600' },
-  link: { color: PALETTE.link, fontWeight: '800' },
 
   footer: { marginTop: 'auto', alignItems: 'center', gap: 14, paddingTop: 16 },
   circle: {
@@ -161,8 +150,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.auth.overlayStrong,
   },
   cta: { marginTop: 2 },
-  loginRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  loginText: { color: PALETTE.subtle, fontSize: 13, fontWeight: '700' },
-  loginLink: { color: PALETTE.link, fontSize: 13, fontWeight: '800' },
+  signupRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  signupText: { color: PALETTE.subtle, fontSize: 13, fontWeight: '700' },
+  signupLink: { color: PALETTE.link, fontSize: 13, fontWeight: '800' },
 });
-
