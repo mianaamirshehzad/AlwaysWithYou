@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation, useRouter } from 'expo-router';
 import * as React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import Colors from '@/src/assets/Colors';
@@ -11,6 +11,7 @@ import CaregiverCard from '../../components/ParentSettings/CaregiverCard';
 import SnoozeDurationSection from '../../components/ParentSettings/SnoozeDurationSection';
 import SoundAlertsSection from '../../components/ParentSettings/SoundAlertsSection';
 import TextSizeSection from '../../components/ParentSettings/TextSizeSection';
+import { logOut } from '../../services/auth';
 
 export default function ParentSetting() {
   const router = useRouter();
@@ -20,6 +21,21 @@ export default function ParentSetting() {
   const [vibrate, setVibrate] = React.useState(false);
   const [snooze, setSnooze] = React.useState(15);
   const [textSize, setTextSize] = React.useState(0.5);
+  const [loggingOut, setLoggingOut] = React.useState(false);
+
+  const handleSignOut = async () => {
+    if (loggingOut) {
+      return;
+    }
+    setLoggingOut(true);
+    try {
+      await logOut();
+      router.replace('/');
+    } catch {
+      setLoggingOut(false);
+      Alert.alert('Sign Out Failed', 'Please try again.');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -59,8 +75,8 @@ export default function ParentSetting() {
 
           <CaregiverCard name="Sarah Smith" relation="Daughter" avatarSource={Images.hands} onCall={() => {}} />
 
-          <Pressable accessibilityRole="button" accessibilityLabel="Sign out" style={({ pressed }) => [styles.signOut, { opacity: pressed ? 0.9 : 1 }]}>
-            <Text style={styles.signOutText}>Sign Out</Text>
+          <Pressable onPress={handleSignOut} accessibilityRole="button" accessibilityLabel="Sign out" style={({ pressed }) => [styles.signOut, { opacity: pressed ? 0.9 : 1 }]}>
+            <Text style={styles.signOutText}>{loggingOut ? 'Signing Out...' : 'Sign Out'}</Text>
           </Pressable>
 
           <Text style={styles.version}>Version 2.4.0</Text>

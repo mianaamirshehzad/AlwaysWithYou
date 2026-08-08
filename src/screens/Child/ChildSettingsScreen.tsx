@@ -8,9 +8,12 @@ import Images from '../../assets/Images';
 import AppInfoSection from '../../components/ChildSettings/AppInfoSection';
 import ChildProfileCard from '../../components/ChildSettings/ChildProfileCard';
 import childSettingsColors from '../../components/ChildSettings/colors';
+import InviteParentModal from '../../components/ChildSettings/InviteParentModal';
 import MyParentsSection from '../../components/ChildSettings/MyParentsSection';
 import type { ParentEntry } from '../../components/ChildSettings/MyParentsSection';
 import PreferencesSection from '../../components/ChildSettings/PreferencesSection';
+import { getCurrentUser, logOut } from '../../services/auth';
+import { createInvitation } from '../../services/invitations';
 
 export default function ChildSettingsScreen() {
   const router = useRouter();
@@ -18,6 +21,52 @@ export default function ChildSettingsScreen() {
 
   const [pushNotifications, setPushNotifications] = React.useState(true);
   const [dailySummaryEmail, setDailySummaryEmail] = React.useState(false);
+  const [loggingOut, setLoggingOut] = React.useState(false);
+
+  const [inviteVisible, setInviteVisible] = React.useState(false);
+  const [inviteCode, setInviteCode] = React.useState<string | null>(null);
+  const [inviteError, setInviteError] = React.useState<string | null>(null);
+  const [inviting, setInviting] = React.useState(false);
+
+  const generateInvitation = async (childUid: string) => {
+    setInviting(true);
+    setInviteError(null);
+    setInviteCode(null);
+    try {
+      const code = await createInvitation(childUid);
+      setInviteCode(code);
+    } catch (error) {
+      setInviteError(
+        error instanceof Error ? error.message : 'Unable to generate an invitation code. Please try again.'
+      );
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const handleAddParent = () => {
+    const user = getCurrentUser();
+    if (user === null) {
+      Alert.alert('Sign In Required', 'Please log in to invite a parent.');
+      return;
+    }
+    setInviteVisible(true);
+    void generateInvitation(user.uid);
+  };
+
+  const handleLogOut = async () => {
+    if (loggingOut) {
+      return;
+    }
+    setLoggingOut(true);
+    try {
+      await logOut();
+      router.replace('/');
+    } catch {
+      setLoggingOut(false);
+      Alert.alert('Log Out Failed', 'Please try again.');
+    }
+  };
 
   const childProfile = {
     name: 'Sarah Miller',
@@ -25,33 +74,33 @@ export default function ChildSettingsScreen() {
     avatarSource: Images.hands,
   };
 
-  const parents: ParentEntry[] = [
-    {
-      id: 'mom',
-      name: 'Mom',
-      lastActive: 'Last active: 2 hours ago',
-      avatarSource: Images.water,
-      onPress: () => openParentDetails('Mom'),
-    },
-    {
-      id: 'dad',
-      name: 'Dad',
-      lastActive: 'Last active: 10 mins ago',
-      avatarSource: Images.medicine,
-      onPress: () => openParentDetails('Dad'),
-    },
-  ];
+  // Proof of concept: how linked parents will appear once invitation linking
+  // is implemented.
+  // const parents: ParentEntry[] = [
+  //   {
+  //     id: 'mom',
+  //     name: 'Mom',
+  //     lastActive: 'Last active: 2 hours ago',
+  //     avatarSource: Images.water,
+  //     onPress: () => openParentDetails('Mom'),
+  //   },
+  //   {
+  //     id: 'dad',
+  //     name: 'Dad',
+  //     lastActive: 'Last active: 10 mins ago',
+  //     avatarSource: Images.medicine,
+  //     onPress: () => openParentDetails('Dad'),
+  //   },
+  // ];
 
-  const openParentDetails = (name: string) => {
-    Alert.alert(name, 'Parent details are not available yet.');
-  };
+  const parents: ParentEntry[] = [];
+
+  // const openParentDetails = (name: string) => {
+  //   Alert.alert(name, 'Parent details are not available yet.');
+  // };
 
   const handleEditProfile = () => {
     Alert.alert('Edit Profile', 'Profile editing is not available yet.');
-  };
-
-  const handleAddParent = () => {
-    Alert.alert('Add New Parent', 'Parent invitation is not available yet.');
   };
 
   const handleReminderSounds = () => {
@@ -68,10 +117,6 @@ export default function ChildSettingsScreen() {
 
   const handleTermsPress = () => {
     Alert.alert('Terms of Service', 'Terms of service are not available yet.');
-  };
-
-  const handleLogOut = () => {
-    router.replace('/');
   };
 
   return (
@@ -130,6 +175,20 @@ export default function ChildSettingsScreen() {
           </View>
         </ScrollView>
       </View>
+
+      <InviteParentModal
+        visible={inviteVisible}
+        code={inviteCode}
+        generating={inviting}
+        error={inviteError}
+        onRetry={() => {
+          const user = getCurrentUser();
+          if (user !== null) {
+            void generateInvitation(user.uid);
+          }
+        }}
+        onClose={() => setInviteVisible(false)}
+      />
     </SafeAreaView>
   );
 }

@@ -6,11 +6,10 @@ import Colors from '@/src/assets/Colors';
 import Images from '../../assets/Images';
 import Button from '../../components/Button';
 import RoleSelectionRadioCard from '../../components/RoleSelectionRadioCard';
+import type { UserRole } from '../../services/auth';
 
-type Role = 'child' | 'parent';
-
-export default function RoleSelectionScreen(props: { onContinue?: (role: Role) => void }) {
-  const [role, setRole] = React.useState<Role>('child');
+export default function RoleSelectionScreen(props: { onContinue?: (role: UserRole) => void }) {
+  const [role, setRole] = React.useState<UserRole>('child');
 
   const handleContinuePress = () => {
     props.onContinue?.(role);

@@ -8,13 +8,52 @@ import Colors from '@/src/assets/Colors';
 import Images from '../../assets/Images';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
+import {
+  getAuthErrorMessage,
+  getUserRole,
+  isValidEmail,
+  logOut,
+  signInWithEmail,
+} from '../../services/auth';
 
 export default function LoginScreen() {
   const router = useRouter();
   const navigation = useNavigation();
 
   const [email, setEmail] = React.useState('');
-  const [phone, setPhone] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [emailError, setEmailError] = React.useState<string | null>(null);
+  const [passwordError, setPasswordError] = React.useState<string | null>(null);
+  const [formError, setFormError] = React.useState<string | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const handleLogin = async () => {
+    const nextEmailError = isValidEmail(email) ? null : 'Please enter a valid email address.';
+    const nextPasswordError = password.length === 0 ? 'Please enter your password.' : null;
+    setEmailError(nextEmailError);
+    setPasswordError(nextPasswordError);
+    setFormError(null);
+    if (nextEmailError || nextPasswordError) {
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const user = await signInWithEmail({ email, password });
+      const role = await getUserRole(user.uid);
+      if (role === null) {
+        await logOut();
+        setFormError('This account has not been set up yet. Please create an account instead.');
+        return;
+      }
+      router.dismissAll();
+      router.replace(role === 'child' ? '/(tabs)' : '/(parent-tabs)');
+    } catch (error) {
+      setFormError(getAuthErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -38,27 +77,33 @@ export default function LoginScreen() {
           <Text style={styles.subtitle}>Log in to stay connected with your family.</Text>
 
           <View style={styles.form}>
-            <Input
-              label="Email Address"
-              value={email}
-              onChangeText={setEmail}
-              placeholder="name@example.com"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              iconName="mail-outline"
-            />
+            <View style={styles.fieldWrap}>
+              <Input
+                label="Email Address"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="name@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                iconName="mail-outline"
+              />
+              {emailError ? <Text style={styles.fieldError}>{emailError}</Text> : null}
+            </View>
 
-            <Input
-              label="Phone Number"
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="+1 (555) 000-0000"
-              keyboardType="phone-pad"
-              autoCapitalize="none"
-              autoCorrect={false}
-              iconName="call-outline"
-            />
+            <View style={styles.fieldWrap}>
+              <Input
+                label="Password"
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Your password"
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                iconName="lock-closed-outline"
+              />
+              {passwordError ? <Text style={styles.fieldError}>{passwordError}</Text> : null}
+            </View>
           </View>
         </View>
 
@@ -68,14 +113,14 @@ export default function LoginScreen() {
             <View style={styles.circleOverlay} />
           </View>
 
+          {formError ? <Text style={styles.formError}>{formError}</Text> : null}
+
           <Button
-            label="Login"
+            label={submitting ? 'Logging In...' : 'Login'}
             showArrow
             arrowIconName="log-in-outline"
-            onPress={() => {
-              router.dismissAll();
-              router.replace('/(tabs)');
-            }}
+            onPress={handleLogin}
+            disabled={submitting}
             style={styles.cta}
           />
 
@@ -134,6 +179,8 @@ const styles = StyleSheet.create({
   title: { color: PALETTE.text, fontSize: 34, lineHeight: 42, fontWeight: '800', marginTop: 6 },
   subtitle: { color: PALETTE.muted, fontSize: 16, lineHeight: 24, fontWeight: '600' },
   form: { gap: 18, marginTop: 18 },
+  fieldWrap: { gap: 8 },
+  fieldError: { color: Colors.dashboard.danger, fontSize: 12, fontWeight: '700', marginLeft: 4 },
 
   footer: { marginTop: 'auto', alignItems: 'center', gap: 14, paddingTop: 16 },
   circle: {
@@ -150,6 +197,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.auth.overlayStrong,
   },
   cta: { marginTop: 2 },
+  formError: { color: Colors.dashboard.danger, fontSize: 13, fontWeight: '800', textAlign: 'center' },
   signupRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   signupText: { color: PALETTE.subtle, fontSize: 13, fontWeight: '700' },
   signupLink: { color: PALETTE.link, fontSize: 13, fontWeight: '800' },

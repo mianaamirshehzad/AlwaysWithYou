@@ -9,14 +9,8 @@ export default function IndexRoute() {
   return (
     <RoleSelectionScreen
       onContinue={(role) => {
-        if (role === 'parent') {
-          router.replace('/(parent-tabs)');
-          return;
-        }
         router.replace({ pathname: '/signup', params: { role } });
       }}
     />
   );
 }
-
-

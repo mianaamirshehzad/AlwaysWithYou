@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Colors from '@/src/assets/Colors';
 import Images from '../../assets/Images';
 import Button from '../../components/Button';
+import { getCurrentUser, getUserRole } from '../../services/auth';
 
 type TabKey = 'have' | 'share';
 
@@ -105,9 +106,33 @@ export default function InviteCodeLinkingScreen() {
   const navigation = useNavigation();
   const [tab, setTab] = React.useState<TabKey>('have');
   const [code, setCode] = React.useState('');
+  const [linking, setLinking] = React.useState(false);
 
   const normalized = code.replace(/[^0-9a-zA-Z]/g, '').toUpperCase().slice(0, 6);
   const canSubmit = normalized.length === 6;
+
+  const handleLinkAccount = async () => {
+    if (linking) {
+      return;
+    }
+    setLinking(true);
+    try {
+      const currentUser = getCurrentUser();
+      if (currentUser === null) {
+        router.replace('/login');
+        return;
+      }
+      const role = await getUserRole(currentUser.uid);
+      if (role === null) {
+        router.replace('/login');
+        return;
+      }
+      router.dismissAll();
+      router.replace(role === 'child' ? '/(tabs)' : '/(parent-tabs)');
+    } finally {
+      setLinking(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -150,12 +175,9 @@ export default function InviteCodeLinkingScreen() {
 
             <View style={styles.ctaWrap}>
               <Button
-                label="Link Account"
-                onPress={() => {
-                  router.dismissAll();
-                  router.replace('/(tabs)');
-                }}
-                disabled={!canSubmit}
+                label={linking ? 'Linking...' : 'Link Account'}
+                onPress={handleLinkAccount}
+                disabled={!canSubmit || linking}
               />
             </View>
           </>
