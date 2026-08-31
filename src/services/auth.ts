@@ -1,4 +1,3 @@
-import { FirebaseError } from 'firebase/app';
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
@@ -18,6 +17,7 @@ export type CreateAccountInput = {
   email: string;
   password: string;
   role: UserRole;
+  phone?: string;
 };
 
 export type SignInInput = {
@@ -38,6 +38,7 @@ export async function createAccount(input: CreateAccountInput): Promise<User> {
     role: input.role,
     name,
     email,
+    phone: input.phone?.trim() ?? null,
     createdAt: serverTimestamp(),
   });
   return user;
@@ -100,8 +101,9 @@ export function getPasswordConfirmationError(password: string, confirmation: str
 }
 
 export function getAuthErrorMessage(error: unknown): string {
-  if (error instanceof FirebaseError) {
-    switch (error.code) {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code?: string }).code : null;
+  if (code) {
+    switch (code) {
       case 'auth/invalid-email':
         return 'Please enter a valid email address.';
       case 'auth/weak-password':

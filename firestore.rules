@@ -1,0 +1,114 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function hasRelationshipWith(childId, parentId) {
+      return exists(/databases/$(database)/documents/relationships/$(childId + '_' + parentId));
+    }
+    
+    function isParticipantInRelationship(relationshipId) {
+      let rel = get(/databases/$(database)/documents/relationships/$(relationshipId));
+      return isAuthenticated() && (request.auth.uid == rel.childId || request.auth.uid == rel.parentId);
+    }
+    
+    function isChildInRelationship(relationshipId) {
+      let rel = get(/databases/$(database)/documents/relationships/$(relationshipId));
+      return isAuthenticated() && request.auth.uid == rel.childId;
+    }
+    
+    function isParentInRelationship(relationshipId) {
+      let rel = get(/databases/$(database)/documents/relationships/$(relationshipId));
+      return isAuthenticated() && request.auth.uid == rel.parentId;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if false;
+      
+      match /settings/{settingId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+    
+    // Relationships
+    match /relationships/{relationshipId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.childId || 
+        request.auth.uid == resource.data.parentId
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.childId || 
+        request.auth.uid == resource.data.parentId
+      );
+      allow delete: if false;
+    }
+    
+    // Invitations
+    match /invitations/{invitationCode} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if false;
+    }
+    
+    // Care tasks
+    match /careTasks/{taskId} {
+      allow read: if isAuthenticated() && isParticipantInRelationship(resource.data.relationshipId);
+      allow create: if isAuthenticated() && isChildInRelationship(request.resource.data.relationshipId);
+      allow update: if isAuthenticated() && isParticipantInRelationship(resource.data.relationshipId);
+      allow delete: if isAuthenticated() && isChildInRelationship(resource.data.relationshipId);
+    }
+    
+    // Task occurrences
+    match /taskOccurrences/{occurrenceId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.parentId || 
+        request.auth.uid == resource.data.childId
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.parentId || 
+        request.auth.uid == resource.data.childId
+      );
+      allow delete: if false;
+    }
+    
+    // Conversations
+    match /conversations/{conversationId} {
+      allow read: if isAuthenticated() && isParticipantInRelationship(conversationId);
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && isParticipantInRelationship(conversationId);
+      allow delete: if false;
+    }
+    
+    // Messages
+    match /messages/{messageId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    // Scheduled notifications
+    match /scheduledNotifications/{notificationId} {
+      allow read, write: if false;
+    }
+  }
+}

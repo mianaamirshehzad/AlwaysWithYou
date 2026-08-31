@@ -1,13 +1,26 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation, useRouter } from 'expo-router';
 import * as React from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import Colors from '@/src/assets/Colors';
 import Images from '../../assets/Images';
 import Button from '../../components/Button';
-import { getCurrentUser, getUserRole } from '../../services/auth';
+import { useAuth } from '../../context/AuthContext';
+import { consumeInvitation } from '../../services/firestore/invitations';
+import { getActiveInvitation } from '../../services/firestore/invitations';
+import { getUserProfile } from '../../services/firestore/users';
 
 type TabKey = 'have' | 'share';
 
@@ -104,35 +117,63 @@ function InviteCodeEntry(props: { value: string; onChange: (code: string) => voi
 export default function InviteCodeLinkingScreen() {
   const router = useRouter();
   const navigation = useNavigation();
+  const { user } = useAuth();
   const [tab, setTab] = React.useState<TabKey>('have');
   const [code, setCode] = React.useState('');
   const [linking, setLinking] = React.useState(false);
+  const [success, setSuccess] = React.useState(false);
+  const [childCode, setChildCode] = React.useState<string | null>(null);
+  const [loadingCode, setLoadingCode] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
   const normalized = code.replace(/[^0-9a-zA-Z]/g, '').toUpperCase().slice(0, 6);
-  const canSubmit = normalized.length === 6;
+  const canSubmit = normalized.length === 6 && !linking;
+
+  React.useEffect(() => {
+    if (tab === 'share' && user) {
+      setLoadingCode(true);
+      getActiveInvitation(user.uid)
+        .then((inv) => {
+          setChildCode(inv?.code ?? null);
+        })
+        .catch(() => {
+          setChildCode(null);
+        })
+        .finally(() => setLoadingCode(false));
+    }
+  }, [tab, user]);
 
   const handleLinkAccount = async () => {
-    if (linking) {
-      return;
-    }
+    if (linking || !canSubmit || !user) return;
     setLinking(true);
+    setErrorMessage(null);
     try {
-      const currentUser = getCurrentUser();
-      if (currentUser === null) {
-        router.replace('/login');
-        return;
-      }
-      const role = await getUserRole(currentUser.uid);
-      if (role === null) {
-        router.replace('/login');
-        return;
-      }
-      router.dismissAll();
-      router.replace(role === 'child' ? '/(tabs)' : '/(parent-tabs)');
+      await consumeInvitation(normalized, user.uid);
+      setSuccess(true);
+      setTimeout(() => {
+        router.dismissAll();
+        router.replace('/(parent-tabs)');
+      }, 1200);
+    } catch (err: any) {
+      setErrorMessage(err?.message ?? 'Something went wrong. Please try again.');
     } finally {
       setLinking(false);
     }
   };
+
+  if (success) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.successWrap}>
+          <View style={styles.successIcon}>
+            <Ionicons name="checkmark-circle" size={64} color={PALETTE.accent} />
+          </View>
+          <Text style={styles.successTitle}>Connected!</Text>
+          <Text style={styles.successSub}>You&apos;re now linked to your family member.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -157,11 +198,19 @@ export default function InviteCodeLinkingScreen() {
         <SegmentedTabs a="I have a code" b="Share my code" value={tab} onChange={setTab} />
 
         <Text style={styles.h1}>Let&apos;s get connected</Text>
-        <Text style={styles.p}>Enter the unique 6–digit code shown on your family member&apos;s screen.</Text>
 
         {tab === 'have' ? (
           <>
-            <InviteCodeEntry value={normalized} onChange={setCode} />
+            <Text style={styles.p}>Enter the unique 6–digit code shown on your family member&apos;s screen.</Text>
+
+            <InviteCodeEntry value={normalized} onChange={(v) => { setCode(v); setErrorMessage(null); }} />
+
+            {errorMessage ? (
+              <View style={styles.errorBox}>
+                <Ionicons name="alert-circle" size={16} color={Colors.dashboard.danger} />
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
+            ) : null}
 
             <Pressable
               onPress={() =>
@@ -174,18 +223,43 @@ export default function InviteCodeLinkingScreen() {
             </Pressable>
 
             <View style={styles.ctaWrap}>
-              <Button
-                label={linking ? 'Linking...' : 'Link Account'}
-                onPress={handleLinkAccount}
-                disabled={!canSubmit || linking}
-              />
+              {linking ? (
+                <View style={styles.loadingRow}>
+                  <ActivityIndicator color={PALETTE.accent} />
+                  <Text style={styles.loadingText}>Linking account...</Text>
+                </View>
+              ) : (
+                <Button
+                  label="Link Account"
+                  onPress={handleLinkAccount}
+                  disabled={!canSubmit}
+                />
+              )}
             </View>
           </>
         ) : (
-          <View style={styles.shareCard}>
-            <Text style={styles.shareText}>
-              Your invite code will appear here after you finish creating your account. Share it with your family member to link.
-            </Text>
+          <View style={styles.shareSection}>
+            <Text style={styles.p}>Share this code with your family member so they can connect to you.</Text>
+
+            {loadingCode ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator color={PALETTE.accent} />
+                <Text style={styles.loadingText}>Loading your code...</Text>
+              </View>
+            ) : childCode ? (
+              <View style={styles.shareCodeCard}>
+                <Text style={styles.shareCodeLabel}>Your invite code</Text>
+                <Text style={styles.shareCodeValue}>{childCode}</Text>
+                <Text style={styles.shareCodeHint}>This code is valid for 24 hours</Text>
+              </View>
+            ) : (
+              <View style={styles.shareCard}>
+                <Ionicons name="information-circle-outline" size={20} color={PALETTE.muted} />
+                <Text style={styles.shareText}>
+                  No active code found. Complete your account setup first, then return here to get your invite code.
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -269,6 +343,29 @@ const styles = StyleSheet.create({
 
   ctaWrap: { marginTop: 10 },
 
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(244,63,94,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(244,63,94,0.25)',
+  },
+  errorText: { color: Colors.dashboard.danger, fontSize: 13, fontWeight: '700', flex: 1 },
+
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 16,
+  },
+  loadingText: { color: PALETTE.muted, fontSize: 14, fontWeight: '700' },
+
+  shareSection: { gap: 16 },
   shareCard: {
     marginTop: 6,
     backgroundColor: Colors.alpha.white06,
@@ -276,11 +373,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: PALETTE.chipBorder,
     padding: 16,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
   },
-  shareText: { color: PALETTE.muted, fontSize: 14, lineHeight: 20, textAlign: 'center', fontWeight: '600' },
+  shareText: { color: PALETTE.muted, fontSize: 14, lineHeight: 20, textAlign: 'center', fontWeight: '600', flex: 1 },
+
+  shareCodeCard: {
+    marginTop: 6,
+    backgroundColor: Colors.brand.primarySoftBg,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: PALETTE.chipBorder,
+    padding: 24,
+    alignItems: 'center',
+    gap: 8,
+  },
+  shareCodeLabel: { color: PALETTE.muted, fontSize: 12, fontWeight: '700', letterSpacing: 1.2 },
+  shareCodeValue: { color: PALETTE.text, fontSize: 36, fontWeight: '900', letterSpacing: 8 },
+  shareCodeHint: { color: PALETTE.subtle, fontSize: 12, fontWeight: '600', marginTop: 4 },
+
+  successWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, paddingHorizontal: 24 },
+  successIcon: { marginBottom: 8 },
+  successTitle: { color: PALETTE.text, fontSize: 28, fontWeight: '900' },
+  successSub: { color: PALETTE.muted, fontSize: 14, fontWeight: '600', textAlign: 'center' },
 
   footer: { marginTop: 8, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: 0.85 },
   footerText: { color: PALETTE.subtle, fontSize: 12, fontWeight: '700' },
 });
-
-

@@ -1,12 +1,6 @@
 import * as React from 'react';
-import { StyleSheet, View } from 'react-native';
-
-import Colors from '@/src/assets/Colors';
+import ChatScreen from '../../src/screens/Child/ChildChatScreen';
 
 export default function ChatTabRoute() {
-  return <View style={styles.container} />;
+  return <ChatScreen />;
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.dashboard.bg },
-});

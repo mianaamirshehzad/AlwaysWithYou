@@ -10,17 +10,21 @@ import ChildProfileCard from '../../components/ChildSettings/ChildProfileCard';
 import childSettingsColors from '../../components/ChildSettings/colors';
 import InviteParentModal from '../../components/ChildSettings/InviteParentModal';
 import MyParentsSection from '../../components/ChildSettings/MyParentsSection';
-import type { ParentEntry } from '../../components/ChildSettings/MyParentsSection';
 import PreferencesSection from '../../components/ChildSettings/PreferencesSection';
+import { useAuth } from '../../context/AuthContext';
+import { useRelationships } from '../../context/RelationshipsContext';
+import { usePreferences } from '../../context/PreferencesContext';
 import { getCurrentUser, logOut } from '../../services/auth';
-import { createInvitation } from '../../services/invitations';
+import { createInvitation } from '../../services/firestore/invitations';
+import { getInitials } from '../../utils/date';
 
 export default function ChildSettingsScreen() {
   const router = useRouter();
   const navigation = useNavigation();
+  const { user } = useAuth();
+  const { parents } = useRelationships();
+  const { preferences, update } = usePreferences();
 
-  const [pushNotifications, setPushNotifications] = React.useState(true);
-  const [dailySummaryEmail, setDailySummaryEmail] = React.useState(false);
   const [loggingOut, setLoggingOut] = React.useState(false);
 
   const [inviteVisible, setInviteVisible] = React.useState(false);
@@ -45,13 +49,13 @@ export default function ChildSettingsScreen() {
   };
 
   const handleAddParent = () => {
-    const user = getCurrentUser();
-    if (user === null) {
+    const current = getCurrentUser();
+    if (current === null) {
       Alert.alert('Sign In Required', 'Please log in to invite a parent.');
       return;
     }
     setInviteVisible(true);
-    void generateInvitation(user.uid);
+    void generateInvitation(current.uid);
   };
 
   const handleLogOut = async () => {
@@ -69,42 +73,23 @@ export default function ChildSettingsScreen() {
   };
 
   const childProfile = {
-    name: 'Sarah Miller',
+    name: user?.displayName ?? 'My Account',
     roleLabel: 'Child Account',
-    avatarSource: Images.hands,
+    avatarSource: undefined as any,
   };
 
-  // Proof of concept: how linked parents will appear once invitation linking
-  // is implemented.
-  // const parents: ParentEntry[] = [
-  //   {
-  //     id: 'mom',
-  //     name: 'Mom',
-  //     lastActive: 'Last active: 2 hours ago',
-  //     avatarSource: Images.water,
-  //     onPress: () => openParentDetails('Mom'),
-  //   },
-  //   {
-  //     id: 'dad',
-  //     name: 'Dad',
-  //     lastActive: 'Last active: 10 mins ago',
-  //     avatarSource: Images.medicine,
-  //     onPress: () => openParentDetails('Dad'),
-  //   },
-  // ];
-
-  const parents: ParentEntry[] = [];
-
-  // const openParentDetails = (name: string) => {
-  //   Alert.alert(name, 'Parent details are not available yet.');
-  // };
+  const parentEntries = parents.map((p) => ({
+    id: p.relationship.id,
+    name: p.profile?.name ?? 'Parent',
+    lastActive: 'Connected',
+  }));
 
   const handleEditProfile = () => {
-    Alert.alert('Edit Profile', 'Profile editing is not available yet.');
+    router.push('/(tabs)/four');
   };
 
   const handleReminderSounds = () => {
-    Alert.alert('Reminder Sounds', 'Sound selection is not available yet.');
+    Alert.alert('Reminder Sounds', 'Notification sound is set by your device.');
   };
 
   const handleHelpPress = () => {
@@ -112,11 +97,11 @@ export default function ChildSettingsScreen() {
   };
 
   const handlePrivacyPress = () => {
-    Alert.alert('Privacy Policy', 'Privacy policy is not available yet.');
+    Alert.alert('Privacy Policy', 'Your data stays within your Firebase project.');
   };
 
   const handleTermsPress = () => {
-    Alert.alert('Terms of Service', 'Terms of service are not available yet.');
+    Alert.alert('Terms of Service', 'This app is for family care coordination.');
   };
 
   return (
@@ -143,14 +128,14 @@ export default function ChildSettingsScreen() {
             onEditProfile={handleEditProfile}
           />
 
-          <MyParentsSection parents={parents} onAddParent={handleAddParent} />
+          <MyParentsSection parents={parentEntries} onAddParent={handleAddParent} />
 
           <PreferencesSection
-            pushNotifications={pushNotifications}
-            onTogglePushNotifications={setPushNotifications}
-            dailySummaryEmail={dailySummaryEmail}
-            onToggleDailySummaryEmail={setDailySummaryEmail}
-            reminderSoundLabel="Chime"
+            pushNotifications={preferences?.pushNotifications ?? true}
+            onTogglePushNotifications={(v) => update({ pushNotifications: v })}
+            dailySummaryEmail={preferences?.dailySummaryEmail ?? false}
+            onToggleDailySummaryEmail={(v) => update({ dailySummaryEmail: v })}
+            reminderSoundLabel="Device"
             onPressReminderSounds={handleReminderSounds}
           />
 
@@ -170,7 +155,7 @@ export default function ChildSettingsScreen() {
           </Pressable>
 
           <View style={styles.footer}>
-            <Text style={styles.version}>Version 2.4.1</Text>
+            <Text style={styles.version}>Version 1.0.0</Text>
             <Text style={styles.love}>Made with love for our elders</Text>
           </View>
         </ScrollView>
@@ -182,9 +167,9 @@ export default function ChildSettingsScreen() {
         generating={inviting}
         error={inviteError}
         onRetry={() => {
-          const user = getCurrentUser();
-          if (user !== null) {
-            void generateInvitation(user.uid);
+          const current = getCurrentUser();
+          if (current !== null) {
+            void generateInvitation(current.uid);
           }
         }}
         onClose={() => setInviteVisible(false)}

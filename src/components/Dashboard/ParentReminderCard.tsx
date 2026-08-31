@@ -12,9 +12,12 @@ type Props = {
   fromName: string;
   onPressAction?: () => void;
   actionLabel?: string;
+  status?: 'pending' | 'completed' | 'missed';
 };
 
 export default function ParentReminderCard(props: Props) {
+  const status = props.status ?? 'pending';
+
   return (
     <View style={styles.wrap}>
       <View style={styles.hero}>
@@ -31,9 +34,6 @@ export default function ParentReminderCard(props: Props) {
         <View style={styles.card}>
           <View style={styles.cardTopRow}>
             <Text style={styles.title}>{props.title}</Text>
-            {/* <View style={styles.squareBtn} accessibilityRole="button" accessibilityLabel="More">
-              <Ionicons name="add" size={18} color={Colors.dashboard.accent} />
-            </View> */}
           </View>
 
           <View style={styles.metaRow}>
@@ -51,15 +51,27 @@ export default function ParentReminderCard(props: Props) {
             </View>
           </View>
 
-          <Pressable
-            onPress={props.onPressAction}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.actionBtn, { opacity: pressed ? 0.92 : 1 }]}>
-            <Text style={styles.actionText}>{props.actionLabel ?? 'I took them'}</Text>
-            <View style={styles.actionIcon}>
-              <Ionicons name="checkmark" size={18} color={Colors.dashboard.bg} />
+          {status === 'completed' ? (
+            <View style={styles.completedBtn}>
+              <Ionicons name="checkmark-circle" size={20} color={Colors.dashboard.bg} />
+              <Text style={styles.completedText}>Completed</Text>
             </View>
-          </Pressable>
+          ) : status === 'missed' ? (
+            <View style={styles.missedBtn}>
+              <Ionicons name="close-circle" size={20} color={Colors.alpha.white85} />
+              <Text style={styles.missedText}>Missed</Text>
+            </View>
+          ) : (
+            <Pressable
+              onPress={props.onPressAction}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.actionBtn, { opacity: pressed ? 0.92 : 1 }]}>
+              <Text style={styles.actionText}>{props.actionLabel ?? 'Done'}</Text>
+              <View style={styles.actionIcon}>
+                <Ionicons name="checkmark" size={18} color={Colors.dashboard.bg} />
+              </View>
+            </Pressable>
+          )}
         </View>
       </View>
     </View>
@@ -105,16 +117,6 @@ const styles = StyleSheet.create({
   },
   cardTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   title: { color: Colors.dashboard.text, fontSize: 22, fontWeight: '900' },
-  squareBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: Colors.dashboard.surfaceStrong,
-    borderWidth: 1,
-    borderColor: Colors.alpha.white08,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   metaText: { color: Colors.alpha.white55, fontSize: 12, fontWeight: '900' },
   fromRow: {
@@ -161,5 +163,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-});
 
+  completedBtn: {
+    width: '100%',
+    minHeight: 54,
+    borderRadius: 18,
+    backgroundColor: Colors.dashboard.accent,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  completedText: { color: Colors.dashboard.bg, fontSize: 16, fontWeight: '900' },
+
+  missedBtn: {
+    width: '100%',
+    minHeight: 54,
+    borderRadius: 18,
+    backgroundColor: Colors.dashboard.surfaceStrong,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: Colors.alpha.white08,
+  },
+  missedText: { color: Colors.alpha.white45, fontSize: 16, fontWeight: '900' },
+});

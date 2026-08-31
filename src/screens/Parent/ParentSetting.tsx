@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation, useRouter } from 'expo-router';
 import * as React from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import Colors from '@/src/assets/Colors';
@@ -11,22 +11,57 @@ import CaregiverCard from '../../components/ParentSettings/CaregiverCard';
 import SnoozeDurationSection from '../../components/ParentSettings/SnoozeDurationSection';
 import SoundAlertsSection from '../../components/ParentSettings/SoundAlertsSection';
 import TextSizeSection from '../../components/ParentSettings/TextSizeSection';
+import { useAuth } from '../../context/AuthContext';
+import { usePreferences } from '../../context/PreferencesContext';
+import { useRelationships } from '../../context/RelationshipsContext';
+import { getUserProfile } from '../../services/firestore/users';
 import { logOut } from '../../services/auth';
+import type { UserProfile } from '../../models';
+import * as Linking from 'expo-linking';
 
 export default function ParentSetting() {
   const router = useRouter();
   const navigation = useNavigation();
+  const { user } = useAuth();
+  const { preferences, update } = usePreferences();
+  const { relationships } = useRelationships();
 
-  const [playSound, setPlaySound] = React.useState(true);
-  const [vibrate, setVibrate] = React.useState(false);
-  const [snooze, setSnooze] = React.useState(15);
-  const [textSize, setTextSize] = React.useState(0.5);
+  const [profile, setProfile] = React.useState<UserProfile | null>(null);
+  const [childProfile, setChildProfile] = React.useState<UserProfile | null>(null);
+  const [loadingProfile, setLoadingProfile] = React.useState(true);
   const [loggingOut, setLoggingOut] = React.useState(false);
 
+  React.useEffect(() => {
+    if (!user) return;
+    let mounted = true;
+    setLoadingProfile(true);
+
+    getUserProfile(user.uid).then((p) => {
+      if (mounted) {
+        setProfile(p);
+        setLoadingProfile(false);
+      }
+    }).catch(() => {
+      if (mounted) setLoadingProfile(false);
+    });
+
+    return () => { mounted = false; };
+  }, [user]);
+
+  React.useEffect(() => {
+    if (relationships.length === 0) return;
+    const childId = relationships[0].childId;
+    let mounted = true;
+
+    getUserProfile(childId).then((p) => {
+      if (mounted) setChildProfile(p);
+    });
+
+    return () => { mounted = false; };
+  }, [relationships]);
+
   const handleSignOut = async () => {
-    if (loggingOut) {
-      return;
-    }
+    if (loggingOut) return;
     setLoggingOut(true);
     try {
       await logOut();
@@ -36,6 +71,22 @@ export default function ParentSetting() {
       Alert.alert('Sign Out Failed', 'Please try again.');
     }
   };
+
+  const handleCallChild = React.useCallback(() => {
+    if (childProfile?.phone) {
+      Linking.openURL(`tel:${childProfile.phone}`);
+    } else {
+      Alert.alert('No Phone Number', 'The child has not provided a phone number yet.');
+    }
+  }, [childProfile]);
+
+  const playSound = preferences?.soundEnabled ?? true;
+  const vibrate = preferences?.vibrateEnabled ?? false;
+  const snooze = preferences?.snoozeMinutes ?? 15;
+  const textSize = preferences?.textSize ?? 0.5;
+
+  const userName = profile?.name ?? 'Parent';
+  const subtitle = profile?.email ?? 'Managing my preferences';
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -53,34 +104,47 @@ export default function ParentSetting() {
           <View style={{ width: 42 }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <UserProfileHeader
-            name="Martha Smith"
-            subtitle="Managing my preferences"
-            avatarSource={Images.hands}
-            size="lg"
-            showBadge
-          />
+        {loadingProfile ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color={Colors.dashboard.accent} />
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+            <UserProfileHeader
+              name={userName}
+              subtitle={subtitle}
+              avatarSource={Images.hands}
+              size="lg"
+              showBadge
+            />
 
-          <SoundAlertsSection
-            playSound={playSound}
-            onTogglePlaySound={setPlaySound}
-            vibrate={vibrate}
-            onToggleVibrate={setVibrate}
-          />
+            <SoundAlertsSection
+              playSound={playSound}
+              onTogglePlaySound={(v) => update({ soundEnabled: v })}
+              vibrate={vibrate}
+              onToggleVibrate={(v) => update({ vibrateEnabled: v })}
+            />
 
-          <SnoozeDurationSection valueMinutes={snooze} onChange={setSnooze} />
+            <SnoozeDurationSection valueMinutes={snooze} onChange={(v) => update({ snoozeMinutes: v })} />
 
-          <TextSizeSection value={textSize} onChange={setTextSize} />
+            <TextSizeSection value={textSize} onChange={(v) => update({ textSize: v })} />
 
-          <CaregiverCard name="Sarah Smith" relation="Daughter" avatarSource={Images.hands} onCall={() => {}} />
+            {childProfile && (
+              <CaregiverCard
+                name={childProfile.name}
+                relation="Child"
+                avatarSource={Images.hands}
+                onCall={handleCallChild}
+              />
+            )}
 
-          <Pressable onPress={handleSignOut} accessibilityRole="button" accessibilityLabel="Sign out" style={({ pressed }) => [styles.signOut, { opacity: pressed ? 0.9 : 1 }]}>
-            <Text style={styles.signOutText}>{loggingOut ? 'Signing Out...' : 'Sign Out'}</Text>
-          </Pressable>
+            <Pressable onPress={handleSignOut} accessibilityRole="button" accessibilityLabel="Sign out" style={({ pressed }) => [styles.signOut, { opacity: pressed ? 0.9 : 1 }]}>
+              <Text style={styles.signOutText}>{loggingOut ? 'Signing Out...' : 'Sign Out'}</Text>
+            </Pressable>
 
-          <Text style={styles.version}>Version 2.4.0</Text>
-        </ScrollView>
+            <Text style={styles.version}>Version 2.4.0</Text>
+          </ScrollView>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -112,6 +176,8 @@ const styles = StyleSheet.create({
   headerTitle: { color: Colors.dashboard.text, fontSize: 16, fontWeight: '900' },
   content: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 28, gap: 16 },
 
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+
   signOut: {
     marginTop: 6,
     width: '100%',
@@ -126,4 +192,3 @@ const styles = StyleSheet.create({
   signOutText: { color: Colors.dashboard.danger, fontSize: 14, fontWeight: '900' },
   version: { textAlign: 'center', color: Colors.alpha.white28, fontSize: 11, fontWeight: '900', marginTop: 4 },
 });
-

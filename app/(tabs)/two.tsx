@@ -1,12 +1,6 @@
 import * as React from 'react';
-import { StyleSheet, View } from 'react-native';
-
-import Colors from '@/src/assets/Colors';
+import PlanScreen from '../../src/screens/Child/ChildPlanScreen';
 
 export default function PlanTabRoute() {
-  return <View style={styles.container} />;
+  return <PlanScreen />;
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.dashboard.bg },
-});

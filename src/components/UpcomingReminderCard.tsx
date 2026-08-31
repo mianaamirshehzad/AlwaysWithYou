@@ -13,14 +13,14 @@ type Props = {
 
 export default function UpcomingReminderCard(props: Props) {
   return (
-    <View style={styles.card}>
+    <View style={styles.card} accessibilityRole="summary">
       <View style={styles.left}>
-        <View style={styles.iconCircle}>
+        <View style={styles.iconCircle} accessibilityLabel={`${props.title} icon`}>
           <Ionicons name={props.iconName} size={18} color={Colors.alpha.white75} />
         </View>
         <View style={styles.textCol}>
-          <Text style={styles.title}>{props.title}</Text>
-          <Text style={styles.subtitle}>{props.subtitle}</Text>
+          <Text style={styles.title} numberOfLines={1}>{props.title}</Text>
+          <Text style={styles.subtitle} numberOfLines={1}>{props.subtitle}</Text>
         </View>
       </View>
 
@@ -34,6 +34,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    minHeight: 56,
     paddingVertical: 14,
     paddingHorizontal: 14,
     borderRadius: 22,
@@ -43,8 +44,8 @@ const styles = StyleSheet.create({
   },
   left: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   iconCircle: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: 999,
     backgroundColor: Colors.dashboard.surfaceStrong,
     borderWidth: 1,
@@ -57,4 +58,3 @@ const styles = StyleSheet.create({
   subtitle: { color: Colors.alpha.white45, fontSize: 11, fontWeight: '800' },
   time: { color: Colors.alpha.white55, fontSize: 12, fontWeight: '900', marginLeft: 12 },
 });
-

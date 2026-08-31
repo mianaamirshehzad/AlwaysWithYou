@@ -10,6 +10,8 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/src/assets/Colors';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
+import { RelationshipsProvider } from '../src/context/RelationshipsContext';
+import { PreferencesProvider } from '../src/context/PreferencesContext';
 import { logOut } from '../src/services/auth';
 
 export {
@@ -55,7 +57,11 @@ function RootLayoutNav() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AuthProvider>
-        <RootNavigator />
+        <PreferencesProvider>
+          <RelationshipsProvider>
+            <RootNavigator />
+          </RelationshipsProvider>
+        </PreferencesProvider>
       </AuthProvider>
     </ThemeProvider>
   );
