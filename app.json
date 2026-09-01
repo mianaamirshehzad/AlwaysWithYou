@@ -46,10 +46,14 @@
     "extra": {
       "router": {
         "root": "app"
+      },
+      "eas": {
+        "projectId": "108c3295-3110-4804-923b-201234b426a2"
       }
     },
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "owner": "mianaamirshehzad"
   }
 }

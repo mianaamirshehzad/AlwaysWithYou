@@ -16,7 +16,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-navigation/native": "^7.1.8",
-    "expo": "~54.0.36",
+    "expo": "~54.0.37",
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.14",
     "expo-crypto": "~15.0.9",
@@ -40,7 +40,7 @@
   },
   "devDependencies": {
     "@react-native-community/cli": "latest",
-    "@types/jest": "^30.0.0",
+    "@types/jest": "29.5.14",
     "@types/react": "~19.1.0",
     "jest-expo": "^54.0.18",
     "react-test-renderer": "19.1.0",
