@@ -16,6 +16,20 @@
     },
     {
       "collectionGroup": "taskOccurrences",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "parentId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "scheduledDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "taskOccurrences",
       "queryScope": "COLLECTION",
       "fields": [
         {
