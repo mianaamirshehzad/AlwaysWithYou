@@ -60,6 +60,11 @@ export default function ParentCalendarScreen() {
           setOccurrences(occs);
           setLoading(false);
         }
+      },
+      () => {
+        if (mounted) {
+          setLoading(false);
+        }
       }
     );
 

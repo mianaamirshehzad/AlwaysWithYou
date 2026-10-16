@@ -117,11 +117,12 @@ export async function syncNotificationsForParent(parentId: string): Promise<void
     collection(db, 'taskOccurrences'),
     where('parentId', '==', parentId),
     where('scheduledDate', '>=', fmt(today)),
-    where('scheduledDate', '<=', fmt(maxDate)),
-    where('status', '==', 'pending')
+    where('scheduledDate', '<=', fmt(maxDate))
   );
   const snapshot = await getDocs(q);
-  const occurrences = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as TaskOccurrence));
+  const occurrences = snapshot.docs
+    .map((d) => ({ id: d.id, ...d.data() } as TaskOccurrence))
+    .filter((d) => d.status === 'pending');
   await scheduleForOccurrences(occurrences);
 }
 

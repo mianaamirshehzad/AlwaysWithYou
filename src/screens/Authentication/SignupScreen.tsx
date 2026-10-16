@@ -54,7 +54,7 @@ export default function SignupScreen() {
     setSubmitting(true);
     try {
       await createAccount({ name, email, password, role });
-      router.replace(role === 'child' ? '/(tabs)' : '/(parent-tabs)');
+      router.replace(role === 'child' ? '/(tabs)' : '/invite');
     } catch (error) {
       setFormError(getAuthErrorMessage(error));
     } finally {

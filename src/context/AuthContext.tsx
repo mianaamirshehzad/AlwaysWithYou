@@ -23,16 +23,21 @@ export function AuthProvider(props: { children: React.ReactNode }) {
 
   const loadRole = React.useCallback(async (uid: string) => {
     setRoleError(false);
-    try {
-      const loadedRole = await getUserRole(uid);
-      if (loadedRole === null) {
-        setRoleError(true);
-        return;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const loadedRole = await getUserRole(uid);
+        if (loadedRole !== null) {
+          setRole(loadedRole);
+          return;
+        }
+      } catch {
+        // Will retry
       }
-      setRole(loadedRole);
-    } catch {
-      setRoleError(true);
+      if (attempt < 2) {
+        await new Promise((res) => setTimeout(res, 400));
+      }
     }
+    setRoleError(true);
   }, []);
 
   React.useEffect(() => {

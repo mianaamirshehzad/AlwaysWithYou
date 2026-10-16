@@ -3,14 +3,15 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import * as React from 'react';
+import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/src/assets/Colors';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
-import { RelationshipsProvider } from '../src/context/RelationshipsContext';
+import { RelationshipsProvider, useRelationships } from '../src/context/RelationshipsContext';
 import { PreferencesProvider } from '../src/context/PreferencesContext';
 import { logOut } from '../src/services/auth';
 
@@ -69,27 +70,58 @@ function RootLayoutNav() {
 
 function RootNavigator() {
   const { status, role, roleError, retryLoadRole } = useAuth();
+  const { relationships, loading: relationshipsLoading } = useRelationships();
   const router = useRouter();
   const segments = useSegments();
+
+  const isParentLinked = React.useMemo(() => {
+    return relationships.some((r) => r.status === 'active');
+  }, [relationships]);
 
   useEffect(() => {
     if (status === 'loading') {
       return;
     }
-    if (status === 'authenticated' && role !== null) {
-      const targetSegment = role === 'child' ? '(tabs)' : '(parent-tabs)';
-      if (segments[0] !== targetSegment) {
-        router.replace(role === 'child' ? '/(tabs)' : '/(parent-tabs)');
+
+    if (status === 'unauthenticated') {
+      if (segments[0] === '(tabs)' || segments[0] === '(parent-tabs)') {
+        router.replace('/');
       }
       return;
     }
-    if (status === 'unauthenticated' && (segments[0] === '(tabs)' || segments[0] === '(parent-tabs)')) {
-      router.replace('/');
+
+    if (status === 'authenticated' && role !== null) {
+      if (role === 'child') {
+        if (segments[0] !== '(tabs)' && segments[0] !== 'modal') {
+          router.replace('/(tabs)');
+        }
+        return;
+      }
+
+      if (role === 'parent') {
+        // While relationships are loading, do not navigate to prevent loops/flicker
+        if (relationshipsLoading) {
+          return;
+        }
+
+        if (isParentLinked) {
+          if (segments[0] !== '(parent-tabs)' && segments[0] !== 'modal') {
+            router.replace('/(parent-tabs)');
+          }
+        } else {
+          // Unlinked parent must link their account via invite code first
+          if (segments[0] !== 'invite' && segments[0] !== 'modal') {
+            router.replace('/invite');
+          }
+        }
+      }
     }
-  }, [status, role, segments, router]);
+  }, [status, role, relationshipsLoading, isParentLinked, segments, router]);
 
   const showLoadingGate =
-    status === 'loading' || (status === 'authenticated' && role === null && !roleError);
+    status === 'loading' ||
+    (status === 'authenticated' && role === null && !roleError) ||
+    (status === 'authenticated' && role === 'parent' && relationshipsLoading);
 
   return (
     <>

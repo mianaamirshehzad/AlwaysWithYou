@@ -80,15 +80,25 @@ export default function ParentDashboardScreen() {
     let mounted = true;
     setLoading(true);
 
-    updateMissedOccurrences().catch(() => {});
+    updateMissedOccurrences(user.uid).catch(() => {});
 
     const todayStr = todayString();
-    const unsubscribe = subscribeToOccurrencesForParent(user.uid, todayStr, todayStr, (occs) => {
-      if (mounted) {
-        setOccurrences(occs);
-        setLoading(false);
+    const unsubscribe = subscribeToOccurrencesForParent(
+      user.uid,
+      todayStr,
+      todayStr,
+      (occs) => {
+        if (mounted) {
+          setOccurrences(occs);
+          setLoading(false);
+        }
+      },
+      () => {
+        if (mounted) {
+          setLoading(false);
+        }
       }
-    });
+    );
 
     return () => {
       mounted = false;

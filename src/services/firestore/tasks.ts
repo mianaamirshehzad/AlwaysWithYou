@@ -105,24 +105,38 @@ export async function getOccurrencesForDate(parentId: string, date: string): Pro
 
 export async function getOccurrencesForParent(parentId: string, startDate: string, endDate: string): Promise<TaskOccurrence[]> {
   const db = getFirebaseDb();
-  const q = query(
-    collection(db, OCCURRENCES_COLLECTION),
-    where('parentId', '==', parentId),
-    where('scheduledDate', '>=', startDate),
-    where('scheduledDate', '<=', endDate)
-  );
+  const q =
+    startDate === endDate
+      ? query(
+          collection(db, OCCURRENCES_COLLECTION),
+          where('parentId', '==', parentId),
+          where('scheduledDate', '==', startDate)
+        )
+      : query(
+          collection(db, OCCURRENCES_COLLECTION),
+          where('parentId', '==', parentId),
+          where('scheduledDate', '>=', startDate),
+          where('scheduledDate', '<=', endDate)
+        );
   const snapshot = await getDocs(q);
   return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as TaskOccurrence));
 }
 
 export async function getOccurrencesForRelationship(relationshipId: string, startDate: string, endDate: string): Promise<TaskOccurrence[]> {
   const db = getFirebaseDb();
-  const q = query(
-    collection(db, OCCURRENCES_COLLECTION),
-    where('relationshipId', '==', relationshipId),
-    where('scheduledDate', '>=', startDate),
-    where('scheduledDate', '<=', endDate)
-  );
+  const q =
+    startDate === endDate
+      ? query(
+          collection(db, OCCURRENCES_COLLECTION),
+          where('relationshipId', '==', relationshipId),
+          where('scheduledDate', '==', startDate)
+        )
+      : query(
+          collection(db, OCCURRENCES_COLLECTION),
+          where('relationshipId', '==', relationshipId),
+          where('scheduledDate', '>=', startDate),
+          where('scheduledDate', '<=', endDate)
+        );
   const snapshot = await getDocs(q);
   return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as TaskOccurrence));
 }
@@ -149,24 +163,40 @@ export function subscribeToOccurrencesForParent(
   parentId: string,
   startDate: string,
   endDate: string,
-  callback: (occurrences: TaskOccurrence[]) => void
+  callback: (occurrences: TaskOccurrence[]) => void,
+  onError?: (error: Error) => void
 ): () => void {
   const db = getFirebaseDb();
-  const q = query(
-    collection(db, OCCURRENCES_COLLECTION),
-    where('parentId', '==', parentId),
-    where('scheduledDate', '>=', startDate),
-    where('scheduledDate', '<=', endDate)
+  const q =
+    startDate === endDate
+      ? query(
+          collection(db, OCCURRENCES_COLLECTION),
+          where('parentId', '==', parentId),
+          where('scheduledDate', '==', startDate)
+        )
+      : query(
+          collection(db, OCCURRENCES_COLLECTION),
+          where('parentId', '==', parentId),
+          where('scheduledDate', '>=', startDate),
+          where('scheduledDate', '<=', endDate)
+        );
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const occs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as TaskOccurrence));
+      callback(occs);
+    },
+    (error) => {
+      console.error('subscribeToOccurrencesForParent error:', error);
+      if (onError) onError(error);
+    }
   );
-  return onSnapshot(q, (snapshot) => {
-    const occs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as TaskOccurrence));
-    callback(occs);
-  });
 }
 
 export function subscribeToTasksForRelationship(
   relationshipId: string,
-  callback: (tasks: CareTask[]) => void
+  callback: (tasks: CareTask[]) => void,
+  onError?: (error: Error) => void
 ): () => void {
   const db = getFirebaseDb();
   const q = query(
@@ -174,10 +204,17 @@ export function subscribeToTasksForRelationship(
     where('relationshipId', '==', relationshipId),
     where('active', '==', true)
   );
-  return onSnapshot(q, (snapshot) => {
-    const tasks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as CareTask));
-    callback(tasks);
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const tasks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as CareTask));
+      callback(tasks);
+    },
+    (error) => {
+      console.error('subscribeToTasksForRelationship error:', error);
+      if (onError) onError(error);
+    }
+  );
 }
 
 export async function generateOccurrencesForTask(task: CareTask): Promise<void> {
@@ -250,14 +287,19 @@ function generateDatesForTask(task: CareTask, start: Date, end: Date): Date[] {
   return dates;
 }
 
-export async function updateMissedOccurrences(): Promise<void> {
+export async function updateMissedOccurrences(parentId?: string): Promise<void> {
   const db = getFirebaseDb();
   const today = todayString();
-  const q = query(
-    collection(db, OCCURRENCES_COLLECTION),
-    where('scheduledDate', '<=', today),
-    where('status', '==', 'pending')
-  );
+  const q = parentId
+    ? query(
+        collection(db, OCCURRENCES_COLLECTION),
+        where('parentId', '==', parentId),
+        where('status', '==', 'pending')
+      )
+    : query(
+        collection(db, OCCURRENCES_COLLECTION),
+        where('status', '==', 'pending')
+      );
   const snapshot = await getDocs(q);
   const now = new Date();
   const batchPromises: Promise<void>[] = [];

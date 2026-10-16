@@ -15,6 +15,7 @@ import {
   logOut,
   signInWithEmail,
 } from '../../services/auth';
+import { getRelationshipsForParent } from '../../services/firestore/relationships';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -47,7 +48,13 @@ export default function LoginScreen() {
         return;
       }
       router.dismissAll();
-      router.replace(role === 'child' ? '/(tabs)' : '/(parent-tabs)');
+      if (role === 'parent') {
+        const rels = await getRelationshipsForParent(user.uid);
+        const hasActiveRel = rels.some((r) => r.status === 'active');
+        router.replace(hasActiveRel ? '/(parent-tabs)' : '/invite');
+      } else {
+        router.replace('/(tabs)');
+      }
     } catch (error) {
       setFormError(getAuthErrorMessage(error));
     } finally {

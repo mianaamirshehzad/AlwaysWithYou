@@ -47,16 +47,24 @@ export async function updateUserPreferences(uid: string, prefs: Partial<UserPref
 
 export function subscribeToUserProfile(
   uid: string,
-  callback: (profile: UserProfile | null) => void
+  callback: (profile: UserProfile | null) => void,
+  onError?: (error: Error) => void
 ): () => void {
   const db = getFirebaseDb();
-  return onSnapshot(doc(db, USERS_COLLECTION, uid), (snap) => {
-    if (!snap.exists()) {
-      callback(null);
-      return;
+  return onSnapshot(
+    doc(db, USERS_COLLECTION, uid),
+    (snap) => {
+      if (!snap.exists()) {
+        callback(null);
+        return;
+      }
+      callback({ uid: snap.id, ...snap.data() } as UserProfile);
+    },
+    (error) => {
+      console.error('subscribeToUserProfile error:', error);
+      if (onError) onError(error);
     }
-    callback({ uid: snap.id, ...snap.data() } as UserProfile);
-  });
+  );
 }
 
 export async function getUserProfilesBatch(uids: string[]): Promise<Map<string, UserProfile>> {

@@ -85,7 +85,8 @@ export async function getRelationshipById(relationshipId: string): Promise<Relat
 export function subscribeToRelationships(
   userId: string,
   role: 'child' | 'parent',
-  callback: (relationships: Relationship[]) => void
+  callback: (relationships: Relationship[]) => void,
+  onError?: (error: Error) => void
 ): () => void {
   const db = getFirebaseDb();
   const field = role === 'child' ? 'childId' : 'parentId';
@@ -94,8 +95,15 @@ export function subscribeToRelationships(
     where(field, '==', userId),
     where('status', '==', 'active')
   );
-  return onSnapshot(q, (snapshot) => {
-    const rels = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Relationship));
-    callback(rels);
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const rels = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Relationship));
+      callback(rels);
+    },
+    (error) => {
+      console.error('subscribeToRelationships error:', error);
+      if (onError) onError(error);
+    }
+  );
 }

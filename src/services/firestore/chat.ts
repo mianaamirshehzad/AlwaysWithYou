@@ -57,7 +57,8 @@ export async function sendMessage(
 export function subscribeToMessages(
   relationshipId: string,
   callback: (messages: Message[]) => void,
-  maxMessages: number = 100
+  maxMessages: number = 100,
+  onError?: (error: Error) => void
 ): () => void {
   const db = getFirebaseDb();
   const q = query(
@@ -66,12 +67,19 @@ export function subscribeToMessages(
     orderBy('createdAt', 'desc'),
     limit(maxMessages)
   );
-  return onSnapshot(q, (snapshot) => {
-    const messages = snapshot.docs
-      .map((d) => ({ id: d.id, ...d.data() } as Message))
-      .reverse();
-    callback(messages);
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const messages = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() } as Message))
+        .reverse();
+      callback(messages);
+    },
+    (error) => {
+      console.error('subscribeToMessages error:', error);
+      if (onError) onError(error);
+    }
+  );
 }
 
 export async function getLastMessages(

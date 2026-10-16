@@ -33,15 +33,21 @@ export async function createAccount(input: CreateAccountInput): Promise<User> {
   const auth = getFirebaseAuth();
   const credential = await createUserWithEmailAndPassword(auth, email, input.password);
   const user = credential.user;
-  await updateProfile(user, { displayName: name });
-  await setDoc(doc(getFirebaseDb(), USERS_COLLECTION, user.uid), {
-    role: input.role,
-    name,
-    email,
-    phone: input.phone?.trim() ?? null,
-    createdAt: serverTimestamp(),
-  });
-  return user;
+  try {
+    await updateProfile(user, { displayName: name });
+    await setDoc(doc(getFirebaseDb(), USERS_COLLECTION, user.uid), {
+      role: input.role,
+      name,
+      email,
+      phone: input.phone?.trim() ?? null,
+      createdAt: serverTimestamp(),
+    });
+    return user;
+  } catch (error) {
+    // If writing the Firestore profile fails, remove the created auth user so the user can retry without collision
+    await user.delete().catch(() => {});
+    throw error;
+  }
 }
 
 export async function signInWithEmail(input: SignInInput): Promise<User> {

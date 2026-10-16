@@ -13,6 +13,7 @@ import {
   Timestamp,
   onSnapshot,
   limit,
+  runTransaction,
 } from 'firebase/firestore';
 import { getFirebaseDb } from '../firebase';
 import { createRelationship } from './relationships';
@@ -66,38 +67,81 @@ export async function consumeInvitation(
   parentUid: string
 ): Promise<{ relationshipId: string; childId: string }> {
   const db = getFirebaseDb();
-  const codeId = code.toUpperCase();
-  const ref = doc(db, INVITATIONS_COLLECTION, codeId);
-  const snapshot = await getDoc(ref);
+  const cleanCode = code.trim();
 
-  if (!snapshot.exists()) {
-    throw new Error('Invalid invitation code. Please check the code and try again.');
+  // 1. Validate that the input contains exactly six digits while preserving leading zeros
+  if (!/^\d{6}$/.test(cleanCode)) {
+    throw new Error('Please enter a valid 6-digit invitation code.');
   }
 
-  const invitation = snapshot.data() as Invitation;
+  return await runTransaction(db, async (transaction) => {
+    // 2. Confirm that the authenticated user is a parent
+    const parentRef = doc(db, 'users', parentUid);
+    const parentSnap = await transaction.get(parentRef);
+    if (!parentSnap.exists() || parentSnap.data()?.role !== 'parent') {
+      throw new Error('Only parent accounts can link using an invitation code.');
+    }
 
-  if (invitation.status === 'consumed') {
-    throw new Error('This invitation has already been used. Please ask for a new one.');
-  }
+    // 3. Verify that the invitation exists, is pending, and has not expired
+    const invRef = doc(db, INVITATIONS_COLLECTION, cleanCode);
+    const invSnap = await transaction.get(invRef);
 
-  const expiresAt = invitation.expiresAt;
-  if (expiresAt instanceof Timestamp && expiresAt.toMillis() < Date.now()) {
-    throw new Error('This invitation has expired. Please ask for a new one.');
-  }
+    if (!invSnap.exists()) {
+      throw new Error('Invalid invitation code. Please check the code and try again.');
+    }
 
-  if (invitation.childUid === parentUid) {
-    throw new Error('You cannot connect to yourself.');
-  }
+    const invitation = invSnap.data() as Invitation;
 
-  const relationshipId = await createRelationship(invitation.childUid, parentUid);
+    // 4. Reject self-linking, already-consumed, or inactive/expired invitations
+    if (invitation.status === 'consumed') {
+      throw new Error('This invitation has already been used. Please ask for a new one.');
+    }
 
-  await updateDoc(ref, {
-    status: 'consumed',
-    parentUid,
-    consumedAt: serverTimestamp(),
+    if (invitation.status !== 'pending') {
+      throw new Error('This invitation is no longer active. Please ask for a new one.');
+    }
+
+    const expiresAt = invitation.expiresAt;
+    if (expiresAt instanceof Timestamp && expiresAt.toMillis() < Date.now()) {
+      throw new Error('This invitation has expired. Please ask for a new one.');
+    }
+
+    if (invitation.childUid === parentUid) {
+      throw new Error('You cannot connect to yourself.');
+    }
+
+    // 5. Create or activate the relationship document using established schema
+    const relationshipId = `${invitation.childUid}_${parentUid}`;
+    const relRef = doc(db, 'relationships', relationshipId);
+    const relSnap = await transaction.get(relRef);
+
+    const now = serverTimestamp();
+
+    if (!relSnap.exists()) {
+      transaction.set(relRef, {
+        id: relationshipId,
+        childId: invitation.childUid,
+        parentId: parentUid,
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else {
+      transaction.update(relRef, {
+        status: 'active',
+        updatedAt: now,
+      });
+    }
+
+    // 6. Mark the invitation as consumed and record parent UID and timestamp
+    transaction.update(invRef, {
+      status: 'consumed',
+      parentUid,
+      consumedAt: now,
+    });
+
+    return { relationshipId, childId: invitation.childUid };
   });
-
-  return { relationshipId, childId: invitation.childUid };
 }
 
 export async function getActiveInvitation(childUid: string): Promise<Invitation | null> {

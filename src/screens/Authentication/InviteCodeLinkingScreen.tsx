@@ -18,6 +18,8 @@ import Colors from '@/src/assets/Colors';
 import Images from '../../assets/Images';
 import Button from '../../components/Button';
 import { useAuth } from '../../context/AuthContext';
+import { useRelationships } from '../../context/RelationshipsContext';
+import { logOut } from '../../services/auth';
 import { consumeInvitation } from '../../services/firestore/invitations';
 import { getActiveInvitation } from '../../services/firestore/invitations';
 import { getUserProfile } from '../../services/firestore/users';
@@ -54,7 +56,7 @@ function InviteCodeEntry(props: { value: string; onChange: (code: string) => voi
   const inputs = React.useRef<Array<TextInput | null>>([]);
 
   function setDigit(index: number, text: string) {
-    const char = text.replace(/[^0-9a-zA-Z]/g, '').toUpperCase().slice(-1);
+    const char = text.replace(/[^0-9]/g, '').slice(-1);
     const next = [...digits];
     next[index] = char;
     props.onChange(next.join(''));
@@ -80,7 +82,7 @@ function InviteCodeEntry(props: { value: string; onChange: (code: string) => voi
           onKeyPress={({ nativeEvent }) => onKeyPress(i, nativeEvent.key)}
           autoCapitalize="characters"
           autoCorrect={false}
-          keyboardType="default"
+          keyboardType="number-pad"
           maxLength={1}
           style={styles.codeBox}
           selectionColor={PALETTE.accent}
@@ -101,7 +103,7 @@ function InviteCodeEntry(props: { value: string; onChange: (code: string) => voi
           onKeyPress={({ nativeEvent }) => onKeyPress(i, nativeEvent.key)}
           autoCapitalize="characters"
           autoCorrect={false}
-          keyboardType="default"
+          keyboardType="number-pad"
           maxLength={1}
           style={styles.codeBox}
           selectionColor={PALETTE.accent}
@@ -117,7 +119,8 @@ function InviteCodeEntry(props: { value: string; onChange: (code: string) => voi
 export default function InviteCodeLinkingScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const { relationships, refresh } = useRelationships();
   const [tab, setTab] = React.useState<TabKey>('have');
   const [code, setCode] = React.useState('');
   const [linking, setLinking] = React.useState(false);
@@ -126,11 +129,16 @@ export default function InviteCodeLinkingScreen() {
   const [loadingCode, setLoadingCode] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
-  const normalized = code.replace(/[^0-9a-zA-Z]/g, '').toUpperCase().slice(0, 6);
-  const canSubmit = normalized.length === 6 && !linking;
+  const isParentLinked = React.useMemo(() => {
+    return relationships.some((r) => r.status === 'active');
+  }, [relationships]);
+
+  // Keep strictly 6 numeric digits preserving leading zeros
+  const normalized = code.replace(/[^0-9]/g, '').slice(0, 6);
+  const canSubmit = /^\d{6}$/.test(normalized) && !linking;
 
   React.useEffect(() => {
-    if (tab === 'share' && user) {
+    if (tab === 'share' && user && role !== 'parent') {
       setLoadingCode(true);
       getActiveInvitation(user.uid)
         .then((inv) => {
@@ -141,14 +149,19 @@ export default function InviteCodeLinkingScreen() {
         })
         .finally(() => setLoadingCode(false));
     }
-  }, [tab, user]);
+  }, [tab, user, role]);
 
   const handleLinkAccount = async () => {
     if (linking || !canSubmit || !user) return;
+    if (role !== 'parent') {
+      setErrorMessage('Only parent accounts can link using an invitation code.');
+      return;
+    }
     setLinking(true);
     setErrorMessage(null);
     try {
       await consumeInvitation(normalized, user.uid);
+      await refresh();
       setSuccess(true);
       setTimeout(() => {
         router.dismissAll();
@@ -158,6 +171,19 @@ export default function InviteCodeLinkingScreen() {
       setErrorMessage(err?.message ?? 'Something went wrong. Please try again.');
     } finally {
       setLinking(false);
+    }
+  };
+
+  const handleBackOrSignOut = async () => {
+    if (user && role === 'parent' && !isParentLinked) {
+      await logOut();
+      router.replace('/');
+      return;
+    }
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      router.replace('/');
     }
   };
 
@@ -180,14 +206,27 @@ export default function InviteCodeLinkingScreen() {
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Pressable
-            onPress={() => (navigation.canGoBack() ? navigation.goBack() : router.replace('/'))}
+            onPress={handleBackOrSignOut}
             hitSlop={12}
             accessibilityRole="button"
-            accessibilityLabel="Back">
+            accessibilityLabel={user && role === 'parent' && !isParentLinked ? 'Sign Out' : 'Back'}>
             <Ionicons name="arrow-back" size={22} color={PALETTE.text} />
           </Pressable>
           <Text style={styles.headerTitle}>ConnectFamily</Text>
-          <View style={{ width: 22 }} />
+          {user ? (
+            <Pressable
+              onPress={async () => {
+                await logOut();
+                router.replace('/');
+              }}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Sign Out">
+              <Text style={styles.headerSignOut}>Sign Out</Text>
+            </Pressable>
+          ) : (
+            <View style={{ width: 22 }} />
+          )}
         </View>
 
         <View style={styles.hero}>
@@ -195,13 +234,19 @@ export default function InviteCodeLinkingScreen() {
           <View style={styles.heroOverlay} />
         </View>
 
-        <SegmentedTabs a="I have a code" b="Share my code" value={tab} onChange={setTab} />
+        {role !== 'parent' ? (
+          <SegmentedTabs a="I have a code" b="Share my code" value={tab} onChange={setTab} />
+        ) : null}
 
         <Text style={styles.h1}>Let&apos;s get connected</Text>
 
-        {tab === 'have' ? (
+        {tab === 'have' || role === 'parent' ? (
           <>
-            <Text style={styles.p}>Enter the unique 6–digit code shown on your family member&apos;s screen.</Text>
+            <Text style={styles.p}>
+              {role === 'parent'
+                ? 'Enter the 6–digit invitation code generated by your child to connect your account.'
+                : 'Enter the unique 6–digit code shown on your family member\'s screen.'}
+            </Text>
 
             <InviteCodeEntry value={normalized} onChange={(v) => { setCode(v); setErrorMessage(null); }} />
 
@@ -286,6 +331,7 @@ const styles = StyleSheet.create({
   container: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 10, paddingBottom: 22, gap: 16 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 },
   headerTitle: { color: PALETTE.text, fontSize: 18, fontWeight: '800' },
+  headerSignOut: { color: Colors.dashboard.danger, fontSize: 13, fontWeight: '800' },
   hero: {
     height: 170,
     borderRadius: 28,
