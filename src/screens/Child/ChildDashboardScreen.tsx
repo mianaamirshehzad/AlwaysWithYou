@@ -7,7 +7,11 @@ import { useRouter } from 'expo-router';
 import Colors from '@/src/assets/Colors';
 import { useAuth } from '@/src/context/AuthContext';
 import { useRelationships, useSelectedParent } from '@/src/context/RelationshipsContext';
-import { createCareTask, getOccurrencesForParent, getTodayOccurrences } from '@/src/services/firestore/tasks';
+import {
+  createCareTask,
+  subscribeToOccurrencesForParent,
+  getTodayOccurrences,
+} from '@/src/services/firestore/tasks';
 import { getInitials, todayString, formatTime12h, formatDateFull } from '@/src/utils/date';
 import CareCard, { type CareStatus } from '../../components/Dashboard/CareCard';
 import FloatingActionButton from '../../components/Dashboard/FloatingActionButton';
@@ -46,16 +50,25 @@ export default function ChildDashboardScreen() {
       return;
     }
     let mounted = true;
-    getOccurrencesForParent(parentUid, todayString(), todayString())
-      .then((occs) => {
+    const todayStr = todayString();
+    const unsubscribe = subscribeToOccurrencesForParent(
+      parentUid,
+      todayStr,
+      todayStr,
+      (occs) => {
         if (mounted) {
           setOccurrences(occs);
           setTodayData(getTodayOccurrences(occs));
         }
-      })
-      .catch(() => {});
+      },
+      (err) => {
+        console.error('ChildDashboard occurrences listener error:', err);
+      }
+    );
+
     return () => {
       mounted = false;
+      unsubscribe();
     };
   }, [parentUid, relationshipId]);
 
@@ -75,6 +88,7 @@ export default function ChildDashboardScreen() {
         assignedTo: parentUid,
         type,
         title,
+        note: '',
         description: '',
         scheduledTime: `${hh}:${mm}`,
         frequency: 'once',
@@ -124,13 +138,17 @@ export default function ChildDashboardScreen() {
           </Pressable>
 
           {!relationshipId ? (
-            <View style={styles.emptyState}>
+            <Pressable
+              onPress={() => router.push('/(tabs)/settings')}
+              accessibilityRole="button"
+              accessibilityLabel="Invite a parent"
+              style={styles.emptyState}>
               <Ionicons name="people-outline" size={40} color={Colors.alpha.white30} />
               <Text style={styles.emptyTitle}>No parent connected yet</Text>
               <Text style={styles.emptyText}>
-                Go to Settings and invite a parent with a code to start sending care reminders.
+                Tap here or go to Settings to invite your parent with a 6-digit code.
               </Text>
-            </View>
+            </Pressable>
           ) : (
             <>
               <SummaryCard
@@ -191,11 +209,6 @@ export default function ChildDashboardScreen() {
           parentName={selectedParent?.profile?.name ?? 'your parent'}
           onCreated={() => {
             setCreateReminderOpen(false);
-            if (parentUid) {
-              getOccurrencesForParent(parentUid, todayString(), todayString())
-                .then((occs) => setTodayData(getTodayOccurrences(occs)))
-                .catch(() => {});
-            }
           }}
         />
       </View>

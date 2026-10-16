@@ -8,6 +8,7 @@ import Colors from '@/src/assets/Colors';
 import Button from '../../components/Button';
 import ReminderForCard from '../../components/Dashboard/ReminderForCard';
 import { useAuth } from '@/src/context/AuthContext';
+import { useRelationships } from '@/src/context/RelationshipsContext';
 import { createCareTask, generateOccurrencesForTask } from '@/src/services/firestore/tasks';
 import { todayString, formatDateInput } from '@/src/utils/date';
 import type { TaskType, Frequency } from '@/src/models';
@@ -41,7 +42,8 @@ const DAYS = [
 ];
 
 export default function CreateNewReminderModal(props: Props) {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const { relationships } = useRelationships();
   const [selectedType, setSelectedType] = React.useState<TaskType>('medicine');
   const [note, setNote] = React.useState('');
   const [title, setTitle] = React.useState('');
@@ -71,6 +73,18 @@ export default function CreateNewReminderModal(props: Props) {
       setFormError('Please connect a parent first.');
       return;
     }
+    if (role !== 'child') {
+      setFormError('Only a caregiver child can create reminders.');
+      return;
+    }
+    const hasActiveRel = relationships.some(
+      (r) => r.id === props.relationshipId && r.status === 'active' && r.parentId === props.parentId
+    );
+    if (!hasActiveRel) {
+      setFormError('You do not have an active relationship with this parent.');
+      return;
+    }
+
     const finalTitle = (title.trim() || defaultTitle).trim();
     const hh = String(timeDate.getHours()).padStart(2, '0');
     const mm = String(timeDate.getMinutes()).padStart(2, '0');
@@ -94,7 +108,10 @@ export default function CreateNewReminderModal(props: Props) {
         active: true,
       };
       await createCareTask(task as any);
+      setTitle('');
+      setNote('');
       props.onCreated?.();
+      props.onClose();
     } catch {
       setFormError('Could not save the reminder. Please check your connection and try again.');
     } finally {

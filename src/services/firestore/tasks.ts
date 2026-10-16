@@ -143,7 +143,12 @@ export async function getOccurrencesForRelationship(relationshipId: string, star
 
 export async function completeOccurrence(occurrenceId: string, completedBy: string): Promise<void> {
   const db = getFirebaseDb();
-  await updateDoc(doc(db, OCCURRENCES_COLLECTION, occurrenceId), {
+  const ref = doc(db, OCCURRENCES_COLLECTION, occurrenceId);
+  const snap = await getDoc(ref);
+  if (snap.exists() && snap.data()?.status === 'completed') {
+    return;
+  }
+  await updateDoc(ref, {
     status: 'completed' as TaskStatus,
     completedAt: serverTimestamp(),
     completedBy,

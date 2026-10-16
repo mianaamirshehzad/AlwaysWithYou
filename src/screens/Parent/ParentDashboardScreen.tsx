@@ -295,7 +295,20 @@ export default function ParentDashboardScreen() {
           onPress={handleCall}
           style={styles.button}
         />
-        <NotificationAcknowledgementModal visible={notifOpen} onClose={() => setNotifOpen(false)} />
+        <NotificationAcknowledgementModal
+          visible={notifOpen}
+          onClose={() => setNotifOpen(false)}
+          fromName={firstChildNameForCard}
+          timeLabel={primaryPending ? formatTime12h(primaryPending.scheduledTime) : 'NOW'}
+          title={primaryPending?.title ?? 'Care Reminder'}
+          message={primaryPending?.note ? `"${primaryPending.note}"` : undefined}
+          imageSource={primaryPending ? (Images as any)[primaryPending.type] ?? Images.water : Images.water}
+          onAcknowledge={() => {
+            if (primaryPending) {
+              handleComplete(primaryPending);
+            }
+          }}
+        />
       </View>
     </SafeAreaView>
   );

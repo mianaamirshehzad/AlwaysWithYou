@@ -57,6 +57,7 @@ export type TaskOccurrence = {
   childId: string;
   title: string;
   type: TaskType;
+  note?: string;
   scheduledDate: string; // YYYY-MM-DD
   scheduledTime: string; // HH:mm
   status: TaskStatus;

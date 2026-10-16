@@ -38,7 +38,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isOwner(userId);
-      allow update: if isOwner(userId);
+      allow update: if isOwner(userId) && request.resource.data.role == resource.data.role;
       allow delete: if false;
       
       match /settings/{settingId} {
@@ -94,7 +94,7 @@ service cloud.firestore {
     // Care tasks
     match /careTasks/{taskId} {
       allow read: if isAuthenticated() && isParticipantInRelationship(resource.data.relationshipId);
-      allow create: if isAuthenticated() && isChildInRelationship(request.resource.data.relationshipId);
+      allow create: if isAuthenticated() && isChildInRelationship(request.resource.data.relationshipId) && request.resource.data.createdBy == request.auth.uid;
       allow update: if isAuthenticated() && isParticipantInRelationship(resource.data.relationshipId);
       allow delete: if isAuthenticated() && isChildInRelationship(resource.data.relationshipId);
     }
@@ -105,11 +105,17 @@ service cloud.firestore {
         request.auth.uid == resource.data.parentId || 
         request.auth.uid == resource.data.childId
       );
-      allow create: if isAuthenticated();
+      allow create: if isAuthenticated() && (
+        request.auth.uid == request.resource.data.childId ||
+        isChildInRelationship(request.resource.data.relationshipId)
+      );
       allow update: if isAuthenticated() && (
         request.auth.uid == resource.data.parentId || 
         request.auth.uid == resource.data.childId
-      );
+      ) && request.resource.data.parentId == resource.data.parentId
+        && request.resource.data.childId == resource.data.childId
+        && request.resource.data.relationshipId == resource.data.relationshipId
+        && request.resource.data.taskId == resource.data.taskId;
       allow delete: if false;
     }
     
