@@ -109,3 +109,16 @@ export async function getCachedRelationships(): Promise<Relationship[]> {
   }
 }
 
+/**
+ * Drops the cached relationships for the signed-out account. Called on logout
+ * and on any account change so the next authenticated user never inherits the
+ * previous user's private care connections from local storage.
+ */
+export async function clearCachedRelationships(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(STORAGE_KEYS.RELATIONSHIPS_CACHE);
+  } catch (error) {
+    console.warn('Failed to clear cached relationships:', error);
+  }
+}
+

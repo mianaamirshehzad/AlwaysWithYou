@@ -9,6 +9,7 @@ import {
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 
 import { getFirebaseAuth, getFirebaseDb } from './firebase';
+import { AppError } from '../core/errors';
 import { cancelAllNotifications } from './notifications';
 import { clearLocalSession, saveLocalSession } from './localSession';
 
@@ -37,25 +38,34 @@ export async function createAccount(input: CreateAccountInput): Promise<User> {
   const user = credential.user;
   try {
     await updateProfile(user, { displayName: name });
+    // `user.email` is the authoritative, normalised address from the ID token
+    // and is the value the Firestore security rules compare against.
+    const profileEmail = user.email ?? email;
     await setDoc(doc(getFirebaseDb(), USERS_COLLECTION, user.uid), {
       role: input.role,
       name,
-      email,
+      email: profileEmail,
       phone: input.phone?.trim() ?? null,
       createdAt: serverTimestamp(),
     });
     await saveLocalSession({
       uid: user.uid,
-      email,
+      email: profileEmail,
       displayName: name,
       role: input.role,
       phone: input.phone?.trim() ?? null,
     });
     return user;
   } catch (error) {
-    // If writing the Firestore profile fails, remove the created auth user so the user can retry without collision
+    // Roll back the half-created auth account so the same email can be used
+    // again immediately instead of leaving an orphaned, profile-less user.
     await user.delete().catch(() => {});
-    throw error;
+    throw new AppError(
+      'We could not finish creating your account. Please try again.',
+      'FIREBASE',
+      error,
+      true
+    );
   }
 }
 
@@ -122,6 +132,9 @@ export function getPasswordConfirmationError(password: string, confirmation: str
 }
 
 export function getAuthErrorMessage(error: unknown): string {
+  if (error instanceof AppError) {
+    return error.message;
+  }
   const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code?: string }).code : null;
   if (code) {
     switch (code) {

@@ -9,7 +9,7 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import type { TaskOccurrence, UserPreferences } from '../models';
-import { todayString, formatDateInput, addDays } from '../utils/date';
+import { formatDateInput, addDays } from '../utils/date';
 import { updateUserProfile } from './firestore/users';
 
 Notifications.setNotificationHandler({

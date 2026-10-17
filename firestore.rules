@@ -1,141 +1,508 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
+    // ---------------------------------------------------------------------
     // Helper functions
+    // ---------------------------------------------------------------------
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
-    
+
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
-    
-    function hasRelationshipWith(childId, parentId) {
-      return exists(/databases/$(database)/documents/relationships/$(childId + '_' + parentId));
-    }
-    
-    function isParticipantInRelationship(relationshipId) {
-      let rel = get(/databases/$(database)/documents/relationships/$(relationshipId));
-      return isAuthenticated() && (request.auth.uid == rel.childId || request.auth.uid == rel.parentId);
-    }
-    
-    function isChildInRelationship(relationshipId) {
-      let rel = get(/databases/$(database)/documents/relationships/$(relationshipId));
-      return isAuthenticated() && request.auth.uid == rel.childId;
-    }
-    
-    function isParentInRelationship(relationshipId) {
-      let rel = get(/databases/$(database)/documents/relationships/$(relationshipId));
-      return isAuthenticated() && request.auth.uid == rel.parentId;
+
+    function isParentAccount() {
+      return isAuthenticated() && getUserData().role == 'parent';
     }
 
-    // Users collection
+    function isChildAccount() {
+      return isAuthenticated() && getUserData().role == 'child';
+    }
+
+    // Relationship documents are always addressed by "<childId>_<parentId>".
+    function relationshipPath(childId, parentId) {
+      return /databases/$(database)/documents/relationships/$(childId + '_' + parentId);
+    }
+
+    function getRelationshipData(relationshipId) {
+      return get(/databases/$(database)/documents/relationships/$(relationshipId)).data;
+    }
+
+    function relationshipExists(childId, parentId) {
+      return exists(relationshipPath(childId, parentId));
+    }
+
+    function hasRelationshipWith(childId, parentId) {
+      return relationshipExists(childId, parentId)
+        && getRelationshipData(childId + '_' + parentId).status == 'active';
+    }
+
+    // Participants of an existing relationship, regardless of its status.
+    function isParticipantIgnoringStatus(relationshipId) {
+      let rel = getRelationshipData(relationshipId);
+      return isAuthenticated()
+        && request.auth.uid != null
+        && (request.auth.uid == rel.childId || request.auth.uid == rel.parentId);
+    }
+
+    // Authorisation for a relationship document addressed by its own id. It
+    // never dereferences `resource`, so reading a relationship that does not
+    // exist yet is answered with a clean denial instead of a rules error.
+    function relationshipParticipant(relationshipId) {
+      return exists(/databases/$(database)/documents/relationships/$(relationshipId))
+        && isParticipantIgnoringStatus(relationshipId);
+    }
+
+    // Participants of an *active* relationship. This is the authorisation
+    // boundary for care data: revoking a relationship immediately revokes
+    // every protected operation that depends on it.
+    function isParticipantInRelationship(relationshipId) {
+      return isParticipantIgnoringStatus(relationshipId)
+        && getRelationshipData(relationshipId).status == 'active';
+    }
+
+    function isChildInRelationship(relationshipId) {
+      return isParticipantInRelationship(relationshipId)
+        && getRelationshipData(relationshipId).childId == request.auth.uid;
+    }
+
+    function isParentInRelationship(relationshipId) {
+      return isParticipantInRelationship(relationshipId)
+        && getRelationshipData(relationshipId).parentId == request.auth.uid;
+    }
+
+    // A user may read a profile belonging to somebody they are genuinely
+    // linked to (so the caregiver dashboard can render a parent profile and
+    // vice versa). No other account is readable, and the collection is never
+    // listable, which prevents UID enumeration.
+    function isLinkedCounterpart(userId) {
+      return isAuthenticated()
+        && userId != request.auth.uid
+        && (hasRelationshipWith(request.auth.uid, userId)
+            || hasRelationshipWith(userId, request.auth.uid));
+    }
+
+    // ---------------------------------------------------------------------
+    // Shared field validation
+    // ---------------------------------------------------------------------
+    function isTaskStatus(status) {
+      return status in ['pending', 'completed', 'missed', 'cancelled', 'snoozed'];
+    }
+
+    function isTaskType(type) {
+      return type in ['medicine', 'water', 'walk', 'exercise', 'call', 'custom'];
+    }
+
+    function isFrequency(frequency) {
+      return frequency in ['once', 'daily', 'weekly', 'custom'];
+    }
+
+    function isHhMm(value) {
+      return value is string && value.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+    }
+
+    function isIsoDate(value) {
+      return value is string && value.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    // Returns true only when `code` refers to an invitation issued by
+    // `childId` that this exact caller has already redeemed. This is what
+    // stops a parent from fabricating a relationship with an arbitrary
+    // caregiver UID.
+    function invitationRedeemedByCaller(code, childId) {
+      return code is string
+        && code.matches('^[0-9]{6}$')
+        && relationshipCodeExists(code)
+        && getInvitationData(code).childUid == childId
+        && getInvitationData(code).parentUid == request.auth.uid
+        && getInvitationData(code).status == 'consumed';
+    }
+
+    function invitationCodePath(code) {
+      return /databases/$(database)/documents/invitations/$(code);
+    }
+
+    function relationshipCodeExists(code) {
+      return exists(invitationCodePath(code));
+    }
+
+    function getInvitationData(code) {
+      return get(invitationCodePath(code)).data;
+    }
+
+    // Redemption gate for the invitations collection. It is evaluated
+    // atomically by Firestore, which is what makes single use safe.
+    function isInvitationRedemption() {
+      let base = request.resource.data.childUid == resource.data.childUid
+        && request.resource.data.code == resource.data.code
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.expiresAt == resource.data.expiresAt;
+
+      let pendingClaim = isAuthenticated()
+        && isParentAccount()
+        && resource.data.status == 'pending'
+        && resource.data.expiresAt > request.time
+        && request.auth.uid != resource.data.childUid
+        && request.resource.data.status == 'consumed'
+        && request.resource.data.parentUid == request.auth.uid;
+
+      // Idempotent retry by the same parent (e.g. after a network failure
+      // while creating the relationship document).
+      let sameParentRetry = isAuthenticated()
+        && isParentAccount()
+        && resource.data.status == 'consumed'
+        && resource.data.parentUid == request.auth.uid;
+
+      return (pendingClaim || sameParentRetry) && base;
+    }
+
+    // ---------------------------------------------------------------------
+    // Users
+    // ---------------------------------------------------------------------
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId) && request.resource.data.role == resource.data.role;
+      allow get: if isOwner(userId) || isLinkedCounterpart(userId);
+      // Enumerating the user collection would expose every UID in the system.
+      allow list: if false;
+
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasOnly(
+             ['role', 'name', 'email', 'phone', 'photoUrl', 'dateOfBirth', 'createdAt'])
+        && request.resource.data.keys().hasAll(['role', 'name', 'email', 'createdAt'])
+        && request.resource.data.role in ['child', 'parent']
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        // The email is bound to the Firebase ID token and can never be forged.
+        && request.resource.data.email == request.auth.token.email;
+
+      // uid, role, email and createdAt are immutable. Only presentation and
+      // notification fields can change.
+      allow update: if isOwner(userId)
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.keys().hasOnly(
+             ['role', 'name', 'email', 'phone', 'photoUrl', 'dateOfBirth',
+              'pushToken', 'createdAt', 'updatedAt']);
+
       allow delete: if false;
-      
+
       match /settings/{settingId} {
         allow read, write: if isOwner(userId);
       }
     }
-    
+
+    // ---------------------------------------------------------------------
     // Relationships
+    // ---------------------------------------------------------------------
     match /relationships/{relationshipId} {
-      allow read: if isAuthenticated() && (
-        request.auth.uid == resource.data.childId || 
-        request.auth.uid == resource.data.parentId
-      );
-      allow create: if isAuthenticated() && (
-        request.auth.uid == request.resource.data.childId || 
-        request.auth.uid == request.resource.data.parentId
-      ) && request.resource.data.childId != request.resource.data.parentId
+      allow get: if relationshipParticipant(relationshipId);
+
+      // Two provable list rules (rather than one `||` rule) so that the
+      // caregiver and parent query shapes remain verifiable by Firestore.
+      allow list: if request.auth.uid == resource.data.childId;
+      allow list: if request.auth.uid == resource.data.parentId;
+
+      // A relationship can only be created by a parent that has *already*
+      // successfully redeemed an invitation issued by the claimed caregiver.
+      // The redemption step is a separate, rules-gated atomic write on the
+      // invitation, which is what enforces single use.
+      allow create: if isAuthenticated()
+        && isParentAccount()
+        && request.auth.uid == request.resource.data.parentId
+        && request.resource.data.childId != request.resource.data.parentId
         && request.resource.data.status == 'active'
-        && relationshipId == request.resource.data.childId + '_' + request.resource.data.parentId;
-      allow update: if isAuthenticated() && (
-        request.auth.uid == resource.data.childId || 
-        request.auth.uid == resource.data.parentId
-      );
+        && relationshipId == request.resource.data.childId + '_' + request.resource.data.parentId
+        && invitationRedeemedByCaller(request.resource.data.get('invitationCode', ''),
+                                      request.resource.data.childId);
+
+      // Participants may deactivate / reactivate, but may never re-point the
+      // relationship at different participants.
+      allow update: if isParticipantIgnoringStatus(relationshipId)
+        && request.resource.data.childId == resource.data.childId
+        && request.resource.data.parentId == resource.data.parentId
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.status in ['active', 'inactive']
+        && request.resource.data.keys().hasOnly(
+             ['id', 'childId', 'parentId', 'invitationCode', 'status', 'createdAt', 'updatedAt']);
+
       allow delete: if false;
     }
-    
+
+    // ---------------------------------------------------------------------
     // Invitations
+    // ---------------------------------------------------------------------
     match /invitations/{invitationCode} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && 
-        request.resource.data.childUid == request.auth.uid &&
-        request.resource.data.status == 'pending' &&
-        request.resource.data.code == invitationCode;
-      allow update: if isAuthenticated() && (
-        // Case 1: Parent consuming invitation
-        (
-          resource.data.status == 'pending' &&
-          request.resource.data.status == 'consumed' &&
-          request.resource.data.parentUid == request.auth.uid &&
-          request.auth.uid != resource.data.childUid &&
-          request.resource.data.childUid == resource.data.childUid &&
-          request.resource.data.code == resource.data.code &&
-          resource.data.expiresAt > request.time
-        ) ||
-        // Case 2: Child owner updating their own invitation
-        (
-          resource.data.childUid == request.auth.uid
-        )
+      // Only the issuing caregiver and the parent who redeemed it can read the
+      // document. There is deliberately no `list` for parents, so an
+      // unconsumed code cannot be discovered by querying the collection.
+      allow get: if isAuthenticated() && resource != null && (
+        request.auth.uid == resource.data.childUid ||
+        request.auth.uid == resource.data.parentUid
       );
+      allow list: if request.auth.uid == resource.data.childUid;
+
+      allow create: if isChildAccount()
+        && invitationCode.matches('^[0-9]{6}$')
+        && request.resource.data.keys().hasOnly(
+             ['childUid', 'code', 'createdAt', 'expiresAt', 'status'])
+        && request.resource.data.childUid == request.auth.uid
+        && request.resource.data.code == invitationCode
+        && request.resource.data.status == 'pending'
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt > request.time;
+
+      // Redemption only. The issuing caregiver has no update path at all, so a
+      // consumed invitation can never be revived or re-pointed at a different
+      // parent. Rule evaluation is atomic, so two concurrent redemptions of
+      // the same code cannot both succeed.
+      allow update: if isInvitationRedemption();
+
       allow delete: if false;
     }
-    
+
+    // ---------------------------------------------------------------------
     // Care tasks
+    // ---------------------------------------------------------------------
     match /careTasks/{taskId} {
-      allow read: if isAuthenticated() && isParticipantInRelationship(resource.data.relationshipId);
-      allow create: if isAuthenticated() && isChildInRelationship(request.resource.data.relationshipId) && request.resource.data.createdBy == request.auth.uid;
-      allow update: if isAuthenticated() && isParticipantInRelationship(resource.data.relationshipId);
-      allow delete: if isAuthenticated() && isChildInRelationship(resource.data.relationshipId);
+      allow get: if resource != null && isParticipantInRelationship(resource.data.relationshipId);
+      allow list: if isParticipantInRelationship(resource.data.relationshipId);
+
+      allow create: if isChildInRelationship(request.resource.data.relationshipId)
+        && isValidCareTask(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid;
+
+      // Only the caregiver may edit a task, and the participant identities are
+      // immutable, so a participant cannot take ownership of a task.
+      allow update: if isChildInRelationship(resource.data.relationshipId)
+        && request.resource.data.relationshipId == resource.data.relationshipId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.assignedTo == resource.data.assignedTo
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isValidCareTask(request.resource.data);
+
+      allow delete: if isChildInRelationship(resource.data.relationshipId);
     }
-    
+
+    function isValidCareTask(data) {
+      let rel = getRelationshipData(data.relationshipId);
+      return data.keys().hasOnly(
+               ['id', 'relationshipId', 'createdBy', 'assignedTo', 'type', 'title',
+                'description', 'note', 'scheduledTime', 'frequency', 'daysOfWeek',
+                'startDate', 'endDate', 'active', 'createdAt', 'updatedAt'])
+        && isTaskType(data.type)
+        && isFrequency(data.frequency)
+        && isHhMm(data.scheduledTime)
+        && isIsoDate(data.startDate)
+        && (!('endDate' in data) || (isIsoDate(data.endDate) && data.endDate >= data.startDate))
+        && (!('daysOfWeek' in data) || (data.daysOfWeek is list
+              && data.daysOfWeek.size() <= 7))
+        && data.active is bool
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        // Ownership is derived from the relationship, never from the client.
+        && data.createdBy == rel.childId
+        && data.assignedTo == rel.parentId;
+    }
+
+    // ---------------------------------------------------------------------
     // Task occurrences
+    // ---------------------------------------------------------------------
     match /taskOccurrences/{occurrenceId} {
-      allow read: if isAuthenticated() && (
-        request.auth.uid == resource.data.parentId || 
-        request.auth.uid == resource.data.childId
-      );
-      allow create: if isAuthenticated() && (
-        request.auth.uid == request.resource.data.childId ||
-        isChildInRelationship(request.resource.data.relationshipId)
-      );
-      allow update: if isAuthenticated() && (
-        request.auth.uid == resource.data.parentId || 
-        request.auth.uid == resource.data.childId
-      ) && request.resource.data.parentId == resource.data.parentId
+      allow get: if resource != null && isParticipantIgnoringStatus(resource.data.relationshipId);
+
+      // Exactly one list rule: Firestore's query prover accepts this disjunction
+      // when the caller constrains one of the two fields to their own uid. Two
+      // separate `allow list` rules cannot be combined - the engine evaluates
+      // every list rule and errors on any it cannot prove, which turns a
+      // legitimate query into a hard denial.
+      //   parent    -> where(parentId == uid)
+      //   caregiver -> where(parentId == uid).where(childId == uid)
+      // Any other combination is denied.
+      allow list: if request.auth.uid == resource.data.parentId
+        || request.auth.uid == resource.data.childId;
+
+      allow create: if isChildInRelationship(request.resource.data.relationshipId)
+        && request.resource.data.childId == request.auth.uid
+        && request.resource.data.parentId
+             == getRelationshipData(request.resource.data.relationshipId).parentId
+        && isValidOccurrence(request.resource.data, occurrenceId);
+
+      allow update: if occurrenceIdentityUnchanged()
+        && occurrenceKeysAllowlisted()
+        && isParticipantInRelationship(resource.data.relationshipId)
+        && escalationMetadataSane()
+        && (isParentOccurrenceUpdate() || isChildOccurrenceUpdate());
+
+      allow delete: if false;
+    }
+
+    function isValidOccurrence(data, occurrenceId) {
+      return data.id == occurrenceId
+        && isTaskType(data.type)
+        && isIsoDate(data.scheduledDate)
+        && isHhMm(data.scheduledTime)
+        && isTaskStatus(data.status)
+        && data.title is string
+        && data.title.size() > 0 && data.title.size() <= 200;
+    }
+
+    // Identity / scheduling fields can never be rewritten by a client.
+    function occurrenceIdentityUnchanged() {
+      return request.resource.data.taskId == resource.data.taskId
+        && request.resource.data.parentId == resource.data.parentId
         && request.resource.data.childId == resource.data.childId
         && request.resource.data.relationshipId == resource.data.relationshipId
-        && request.resource.data.taskId == resource.data.taskId;
-      allow delete: if false;
+        && request.resource.data.scheduledDate == resource.data.scheduledDate
+        && request.resource.data.scheduledTime == resource.data.scheduledTime
+        && request.resource.data.title == resource.data.title
+        && request.resource.data.type == resource.data.type
+        && request.resource.data.createdAt == resource.data.createdAt;
     }
-    
+
+    // Only escalation metadata may be introduced as a *new* field; the value
+    // checks in escalationMetadataSane() stop it being fabricated or
+    // re-pointed. Uses Map.diff() because the rules language cannot
+    // concatenate lists.
+    // Only fields from the occurrence schema may ever exist on the document, so
+    // a client cannot inject arbitrary data through a generic update.
+    function occurrenceKeysAllowlisted() {
+      return request.resource.data.keys().hasOnly(
+               ['id', 'taskId', 'relationshipId', 'parentId', 'childId', 'title',
+                'type', 'note', 'scheduledDate', 'scheduledTime', 'status',
+                'snoozedUntil', 'snoozeCount', 'completedAt', 'completedBy',
+                'createdAt', 'updatedAt',
+                'escalatedAt', 'escalatedTo', 'escalationStage',
+                'escalationDeliveryStatus', 'escalationError']);
+    }
+
+    // NOTE ON `Map.get()`: reading an absent field is a rules evaluation error,
+    // and comparing two values of different types (for example null against a
+    // timestamp) is also an error that denies the whole rule. Every optional
+    // field below is therefore read through `.get(key, <same-typed default>)`;
+    // `request.time` is a stable, request-scoped timestamp that makes "absent
+    // on both sides" compare as equal.
+    function escalationMetadataSane() {
+      return request.resource.data.get('escalatedTo', resource.data.childId)
+               == resource.data.childId
+        && request.resource.data.get('escalationStage', 1) == 1
+        && (request.resource.data.get('escalationDeliveryStatus', 'pending')
+              in ['pending', 'delivered', 'failed', 'not_configured'])
+        && request.resource.data.get('escalatedAt', request.time) is timestamp
+        && (request.resource.data.get('escalationError', '') is string);
+    }
+
+    // A parent may only act on their *own* occurrence, and only by
+    // acknowledging, snoozing, or escalating it to their caregiver. They can
+    // never cancel, never complete on someone else's behalf, and can never
+    // forge acknowledgment metadata.
+    function isParentOccurrenceUpdate() {
+      let unchangedCompletion =
+        request.resource.data.get('completedAt', request.time)
+             == resource.data.get('completedAt', request.time)
+        && request.resource.data.get('completedBy', '')
+             == resource.data.get('completedBy', '');
+
+      let acknowledge =
+        resource.data.status in ['pending', 'snoozed', 'missed']
+        && request.resource.data.status == 'completed'
+        && request.resource.data.completedBy == request.auth.uid
+        && request.resource.data.completedAt is timestamp
+        // A client cannot backdate an acknowledgment.
+        && request.resource.data.completedAt == request.time;
+
+      let snooze =
+        resource.data.status in ['pending', 'snoozed', 'missed']
+        && request.resource.data.status == 'snoozed'
+        && unchangedCompletion
+        // `.get()` is mandatory here: reading an absent field is a rules
+        // evaluation error, and an error raised inside one branch of an `||`
+        // denies the entire rule.
+        && request.resource.data.get('snoozedUntil', request.time) is timestamp
+        && request.resource.data.get('snoozeCount', -1)
+             == resource.data.get('snoozeCount', 0) + 1;
+
+      let escalate =
+        resource.data.status in ['pending', 'snoozed', 'missed']
+        && request.resource.data.status == 'missed'
+        && unchangedCompletion;
+
+      return request.auth.uid == resource.data.parentId
+        && (acknowledge || snooze || escalate);
+    }
+
+    // The caregiver may cancel a future occurrence or record a missed one.
+    // Neither may rewrite acknowledgment metadata.
+    function isChildOccurrenceUpdate() {
+      return request.auth.uid == resource.data.childId
+        && resource.data.status in ['pending', 'snoozed', 'missed']
+        && request.resource.data.status in ['cancelled', 'missed']
+        && request.resource.data.get('completedAt', request.time)
+             == resource.data.get('completedAt', request.time)
+        && request.resource.data.get('completedBy', '')
+             == resource.data.get('completedBy', '');
+    }
+
+    // ---------------------------------------------------------------------
     // Conversations
+    // ---------------------------------------------------------------------
     match /conversations/{conversationId} {
-      allow read: if isAuthenticated() && isParticipantInRelationship(conversationId);
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && isParticipantInRelationship(conversationId);
+      allow get: if isParticipantInRelationship(conversationId);
+
+      allow create: if isParticipantInRelationship(conversationId)
+        && request.resource.data.relationshipId == conversationId
+        && request.resource.data.id == conversationId
+        && request.resource.data.keys().hasOnly(
+             ['id', 'relationshipId', 'lastMessage', 'lastMessageAt', 'createdAt']);
+
+      allow update: if isParticipantInRelationship(conversationId)
+        && request.resource.data.relationshipId == resource.data.relationshipId
+        && request.resource.data.id == resource.data.id;
+
       allow delete: if false;
     }
-    
+
+    // ---------------------------------------------------------------------
     // Messages
+    // ---------------------------------------------------------------------
+    // Messages are a top-level collection with an auto-generated id and a
+    // `conversationId` field. Authorisation therefore has to resolve the
+    // conversationId from the message document itself.
     match /messages/{messageId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
+      allow get: if resource != null && isParticipantIgnoringStatus(resource.data.conversationId);
+
+      // Provable from the "where(conversationId == X)" query shape used by the
+      // chat screens; a conversation id is the relationship id.
+      allow list: if isParticipantInRelationship(resource.data.conversationId);
+
+      allow create: if isParticipantInRelationship(request.resource.data.conversationId)
+        && request.resource.data.keys().hasOnly(
+             ['conversationId', 'senderId', 'text', 'messageType',
+              'audioUrl', 'audioDurationMs', 'status', 'createdAt'])
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.status == 'sent'
+        && request.resource.data.messageType in ['text', 'audio']
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 4000
+        && request.resource.data.createdAt == request.time;
+
       allow update: if false;
       allow delete: if false;
     }
-    
+
+    // ---------------------------------------------------------------------
     // Scheduled notifications
+    // ---------------------------------------------------------------------
+    // Reserved for server-managed notification delivery. The client schedules
+    // device-local notifications through Expo and never reads or writes here.
     match /scheduledNotifications/{notificationId} {
       allow read, write: if false;
     }

@@ -69,6 +69,8 @@ export default function CreateNewReminderModal(props: Props) {
   const defaultTitle = REMINDER_TYPES.find((t) => t.key === selectedType)?.label ?? 'Reminder';
 
   const handleSend = async () => {
+    // Re-entrancy guard: a double tap must never create two reminders.
+    if (submitting) return;
     if (!user || !props.relationshipId || !props.parentId) {
       setFormError('Please connect a parent first.');
       return;
@@ -107,13 +109,15 @@ export default function CreateNewReminderModal(props: Props) {
         startDate,
         active: true,
       };
-      await createCareTask(task as any);
+      await createCareTask(task);
+      // Only clear the form once Firestore has confirmed the write.
       setTitle('');
       setNote('');
       props.onCreated?.();
       props.onClose();
-    } catch {
-      setFormError('Could not save the reminder. Please check your connection and try again.');
+    } catch (err: any) {
+      // The form is intentionally left untouched so nothing typed is lost.
+      setFormError(err?.message ?? 'Could not save the reminder. Please check your connection and try again.');
     } finally {
       setSubmitting(false);
     }

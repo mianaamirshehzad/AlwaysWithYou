@@ -20,6 +20,8 @@ export type Relationship = {
   id: string;
   childId: string;
   parentId: string;
+  /** Six digit code that this parent redeemed to create the relationship. */
+  invitationCode?: string;
   status: RelationshipStatus;
   createdAt: Timestamp;
   updatedAt: Timestamp;

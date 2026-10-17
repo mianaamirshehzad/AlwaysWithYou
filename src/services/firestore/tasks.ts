@@ -1,3 +1,4 @@
+import type { Firestore } from 'firebase/firestore';
 import {
   collection,
   doc,
@@ -12,17 +13,78 @@ import {
   serverTimestamp,
   onSnapshot,
   Timestamp,
-  limit,
-  startAfter,
   runTransaction,
 } from 'firebase/firestore';
 import { getFirebaseDb } from '../firebase';
-import type { CareTask, TaskOccurrence, TaskStatus, Frequency } from '../../models';
+import { AppError } from '../../core/errors';
+import type { CareTask, TaskOccurrence, TaskStatus } from '../../models';
 import { SNOOZE_CONFIG, ESCALATION_CONFIG } from '../../models';
 import { cancelNotificationForOccurrence, rescheduleNotificationForSnooze } from '../notifications';
 
 const TASKS_COLLECTION = 'careTasks';
 const OCCURRENCES_COLLECTION = 'taskOccurrences';
+const HH_MM_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+export type CareTaskInput = Omit<CareTask, 'id' | 'createdAt' | 'updatedAt'>;
+
+/**
+ * Firestore rejects `undefined` field values outright, which previously made
+ * reminder creation fail for every frequency that did not carry `daysOfWeek`.
+ * Stripping them here keeps the document shape identical to the schema and to
+ * the `careTasks` allowlist enforced by the security rules.
+ */
+function stripUndefined<T extends Record<string, unknown>>(value: T): Partial<T> {
+  const result: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(value)) {
+    if (val !== undefined) {
+      result[key] = val;
+    }
+  }
+  return result as Partial<T>;
+}
+
+/**
+ * Validates the fields the security rules also enforce, so an invalid reminder
+ * fails fast with a readable message instead of a `permission-denied` error.
+ */
+export function validateCareTask(task: CareTaskInput): string | null {
+  if (!task.title || task.title.trim().length === 0) {
+    return 'Please enter a title for the reminder.';
+  }
+  if (task.title.trim().length > 200) {
+    return 'The reminder title is too long.';
+  }
+  if (!HH_MM_PATTERN.test(task.scheduledTime)) {
+    return 'Please choose a valid time for the reminder.';
+  }
+  if (!ISO_DATE_PATTERN.test(task.startDate)) {
+    return 'Please choose a valid start date.';
+  }
+  if (task.endDate !== undefined) {
+    if (!ISO_DATE_PATTERN.test(task.endDate)) {
+      return 'Please choose a valid end date.';
+    }
+    if (task.endDate < task.startDate) {
+      return 'The end date cannot be before the start date.';
+    }
+  }
+  if (!task.relationshipId || !task.createdBy || !task.assignedTo) {
+    return 'The reminder is missing its connection details.';
+  }
+  if (task.createdBy === task.assignedTo) {
+    return 'A reminder cannot be assigned to the person who created it.';
+  }
+  if (task.frequency === 'custom') {
+    if (!task.daysOfWeek || task.daysOfWeek.length === 0) {
+      return 'Please choose at least one day for this reminder.';
+    }
+    if (task.daysOfWeek.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
+      return 'Please choose valid days for this reminder.';
+    }
+  }
+  return null;
+}
 
 function todayString(): string {
   const d = new Date();
@@ -44,15 +106,50 @@ function addDays(d: Date, n: number): Date {
   return x;
 }
 
+/**
+ * Occurrence query scoped to both participants, which is what the
+ * `taskOccurrences` list rule requires.
+ */
+function occurrencesOfTaskQuery(
+  db: Firestore,
+  taskId: string,
+  parentId: string,
+  childId: string
+) {
+  return query(
+    collection(db, OCCURRENCES_COLLECTION),
+    where('parentId', '==', parentId),
+    where('childId', '==', childId),
+    where('taskId', '==', taskId)
+  );
+}
+
 function generateOccurrenceId(taskId: string, date: string): string {
   return `${taskId}_${date}`;
 }
 
-export async function createCareTask(task: Omit<CareTask, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
+function firebaseErrorCode(error: unknown): string | null {
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    return String((error as { code?: string }).code);
+  }
+  return null;
+}
+
+export async function createCareTask(task: CareTaskInput): Promise<string> {
+  const validationError = validateCareTask(task);
+  if (validationError) {
+    throw new AppError(validationError, 'VALIDATION');
+  }
+
   const db = getFirebaseDb();
   const ref = doc(collection(db, TASKS_COLLECTION));
   const now = serverTimestamp();
-  await setDoc(ref, { ...task, id: ref.id, createdAt: now, updatedAt: now });
+  await setDoc(ref, {
+    ...stripUndefined(task as unknown as Record<string, unknown>),
+    id: ref.id,
+    createdAt: now,
+    updatedAt: now,
+  });
   await generateOccurrencesForTask({ ...task, id: ref.id } as CareTask);
   return ref.id;
 }
@@ -62,18 +159,18 @@ export async function updateCareTask(taskId: string, updates: Partial<CareTask>)
   await updateDoc(doc(db, TASKS_COLLECTION, taskId), { ...updates, updatedAt: serverTimestamp() });
 }
 
-export async function deleteCareTask(taskId: string): Promise<void> {
+export async function deleteCareTask(
+  taskId: string,
+  parentId: string,
+  childId: string
+): Promise<void> {
   const db = getFirebaseDb();
   await deleteDoc(doc(db, TASKS_COLLECTION, taskId));
 
   // Cancel future pending/snoozed occurrences to avoid ghost reminders
   const today = todayString();
   try {
-    const q = query(
-      collection(db, OCCURRENCES_COLLECTION),
-      where('taskId', '==', taskId)
-    );
-    const snap = await getDocs(q);
+    const snap = await getDocs(occurrencesOfTaskQuery(db, taskId, parentId, childId));
     const updates: Promise<void>[] = [];
     for (const d of snap.docs) {
       const occ = d.data() as TaskOccurrence;
@@ -93,18 +190,19 @@ export async function deleteCareTask(taskId: string): Promise<void> {
   }
 }
 
-export async function toggleTaskActive(taskId: string, active: boolean): Promise<void> {
+export async function toggleTaskActive(
+  taskId: string,
+  active: boolean,
+  parentId: string,
+  childId: string
+): Promise<void> {
   const db = getFirebaseDb();
   await updateDoc(doc(db, TASKS_COLLECTION, taskId), { active, updatedAt: serverTimestamp() });
 
   const today = todayString();
   if (!active) {
     try {
-      const q = query(
-        collection(db, OCCURRENCES_COLLECTION),
-        where('taskId', '==', taskId)
-      );
-      const snap = await getDocs(q);
+      const snap = await getDocs(occurrencesOfTaskQuery(db, taskId, parentId, childId));
       const batch: Promise<void>[] = [];
       for (const d of snap.docs) {
         const occ = d.data() as TaskOccurrence;
@@ -164,41 +262,47 @@ export async function getOccurrencesForDate(parentId: string, date: string): Pro
   return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as TaskOccurrence));
 }
 
-export async function getOccurrencesForParent(parentId: string, startDate: string, endDate: string): Promise<TaskOccurrence[]> {
-  const db = getFirebaseDb();
-  const q =
+/**
+ * Builds the occurrence query for one parent.
+ *
+ * `viewerChildId` must be supplied when the caller is the caregiver. The
+ * security rules authorise a caregiver query by requiring the query to
+ * constrain `childId` to the caregiver's own uid, which is what lets Firestore
+ * prove the query is scoped to a relationship participant. Omitting it means
+ * the caregiver query is rejected by the backend.
+ */
+function occurrencesQueryForParent(
+  db: Firestore,
+  parentId: string,
+  startDate: string,
+  endDate: string,
+  viewerChildId?: string
+) {
+  const constraints = [where('parentId', '==', parentId)];
+  if (viewerChildId) {
+    constraints.push(where('childId', '==', viewerChildId));
+  }
+  constraints.push(
     startDate === endDate
-      ? query(
-          collection(db, OCCURRENCES_COLLECTION),
-          where('parentId', '==', parentId),
-          where('scheduledDate', '==', startDate)
-        )
-      : query(
-          collection(db, OCCURRENCES_COLLECTION),
-          where('parentId', '==', parentId),
-          where('scheduledDate', '>=', startDate),
-          where('scheduledDate', '<=', endDate)
-        );
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as TaskOccurrence));
+      ? where('scheduledDate', '==', startDate)
+      : where('scheduledDate', '>=', startDate)
+  );
+  if (startDate !== endDate) {
+    constraints.push(where('scheduledDate', '<=', endDate));
+  }
+  return query(collection(db, OCCURRENCES_COLLECTION), ...constraints);
 }
 
-export async function getOccurrencesForRelationship(relationshipId: string, startDate: string, endDate: string): Promise<TaskOccurrence[]> {
+export async function getOccurrencesForParent(
+  parentId: string,
+  startDate: string,
+  endDate: string,
+  viewerChildId?: string
+): Promise<TaskOccurrence[]> {
   const db = getFirebaseDb();
-  const q =
-    startDate === endDate
-      ? query(
-          collection(db, OCCURRENCES_COLLECTION),
-          where('relationshipId', '==', relationshipId),
-          where('scheduledDate', '==', startDate)
-        )
-      : query(
-          collection(db, OCCURRENCES_COLLECTION),
-          where('relationshipId', '==', relationshipId),
-          where('scheduledDate', '>=', startDate),
-          where('scheduledDate', '<=', endDate)
-        );
-  const snapshot = await getDocs(q);
+  const snapshot = await getDocs(
+    occurrencesQueryForParent(db, parentId, startDate, endDate, viewerChildId)
+  );
   return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as TaskOccurrence));
 }
 
@@ -209,14 +313,20 @@ export async function completeOccurrence(occurrenceId: string, completedBy: stri
   await runTransaction(db, async (transaction) => {
     const snap = await transaction.get(ref);
     if (!snap.exists()) {
-      throw new Error('Reminder occurrence not found.');
+      throw new AppError('Reminder not found.', 'NOT_FOUND');
     }
     const data = snap.data() as TaskOccurrence;
+
+    // Authorisation is re-checked here so a stale screen cannot acknowledge
+    // somebody else's occurrence. The security rules enforce the same rule.
+    if (data.parentId !== completedBy) {
+      throw new AppError('You can only acknowledge your own reminders.', 'FORBIDDEN');
+    }
     if (data.status === 'completed') {
-      return; // Idempotent
+      return; // Idempotent: duplicate taps are safe.
     }
     if (data.status === 'cancelled') {
-      throw new Error('Cannot complete a cancelled reminder.');
+      throw new AppError('Cannot complete a cancelled reminder.', 'VALIDATION');
     }
 
     // Handles 'pending', 'snoozed', and late acknowledgment of 'missed'
@@ -244,22 +354,11 @@ export function subscribeToOccurrencesForParent(
   startDate: string,
   endDate: string,
   callback: (occurrences: TaskOccurrence[]) => void,
-  onError?: (error: Error) => void
+  onError?: (error: Error) => void,
+  viewerChildId?: string
 ): () => void {
   const db = getFirebaseDb();
-  const q =
-    startDate === endDate
-      ? query(
-          collection(db, OCCURRENCES_COLLECTION),
-          where('parentId', '==', parentId),
-          where('scheduledDate', '==', startDate)
-        )
-      : query(
-          collection(db, OCCURRENCES_COLLECTION),
-          where('parentId', '==', parentId),
-          where('scheduledDate', '>=', startDate),
-          where('scheduledDate', '<=', endDate)
-        );
+  const q = occurrencesQueryForParent(db, parentId, startDate, endDate, viewerChildId);
   return onSnapshot(
     q,
     (snapshot) => {
@@ -297,6 +396,23 @@ export function subscribeToTasksForRelationship(
   );
 }
 
+/**
+ * Lists the occurrence ids that already exist for a task.
+ *
+ * The query has to constrain `parentId` AND `childId`, because that is what
+ * lets Firestore's query prover show the result only contains this
+ * relationship's data (see the `allow list` rule in firestore.rules).
+ */
+async function getExistingOccurrenceIds(
+  task: Pick<CareTask, 'id' | 'createdBy' | 'assignedTo'>
+): Promise<Set<string>> {
+  const db = getFirebaseDb();
+  const snapshot = await getDocs(
+    occurrencesOfTaskQuery(db, task.id, task.assignedTo, task.createdBy)
+  );
+  return new Set(snapshot.docs.map((d) => d.id));
+}
+
 export async function generateOccurrencesForTask(task: CareTask): Promise<void> {
   const db = getFirebaseDb();
   const today = new Date();
@@ -308,31 +424,44 @@ export async function generateOccurrencesForTask(task: CareTask): Promise<void> 
 
   const dates = generateDatesForTask(task, startDate, effectiveEnd);
 
+  // Occurrence ids are deterministic (`<taskId>_<YYYY-MM-DD>`) and only the
+  // missing ones are written, so re-running generation never duplicates an
+  // occurrence and never resets one that has been acknowledged, snoozed or
+  // missed. Missing documents cannot be probed with a document read (Firestore
+  // evaluates read rules even for documents that do not exist), which is why
+  // the existing set is resolved with a query instead.
+  const existing = await getExistingOccurrenceIds(task);
+
   const batchOps: Promise<void>[] = [];
   for (const date of dates) {
     const dateStr = formatDate(date);
     const occId = generateOccurrenceId(task.id, dateStr);
-    const ref = doc(db, OCCURRENCES_COLLECTION, occId);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) {
-      batchOps.push(
-        setDoc(ref, {
-          id: occId,
-          taskId: task.id,
-          relationshipId: task.relationshipId,
-          parentId: task.assignedTo,
-          childId: task.createdBy,
-          title: task.title,
-          type: task.type,
-          note: task.note ?? '',
-          scheduledDate: dateStr,
-          scheduledTime: task.scheduledTime,
-          status: 'pending' as TaskStatus,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        })
-      );
+    if (existing.has(occId)) {
+      continue;
     }
+    batchOps.push(
+      setDoc(doc(db, OCCURRENCES_COLLECTION, occId), {
+        id: occId,
+        taskId: task.id,
+        relationshipId: task.relationshipId,
+        parentId: task.assignedTo,
+        childId: task.createdBy,
+        title: task.title,
+        type: task.type,
+        note: task.note ?? '',
+        scheduledDate: dateStr,
+        scheduledTime: task.scheduledTime,
+        status: 'pending' as TaskStatus,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }).catch((error: unknown) => {
+        // Two devices may have generated the same occurrence concurrently; the
+        // existing record wins so real state is never overwritten.
+        if (firebaseErrorCode(error) !== 'already-exists') {
+          throw error;
+        }
+      })
+    );
   }
   await Promise.all(batchOps);
 }
@@ -469,20 +598,18 @@ export async function snoozeOccurrence(
   return { snoozedUntil: snoozeDate!, snoozeCount: newCount! };
 }
 
-export async function updateMissedOccurrences(parentId?: string): Promise<TaskOccurrence[]> {
+export async function updateMissedOccurrences(
+  parentId?: string,
+  viewerChildId?: string
+): Promise<TaskOccurrence[]> {
   if (!parentId) return [];
   const db = getFirebaseDb();
   const today = todayString();
   const minDate = formatDate(addDays(new Date(), -7));
 
-  const q = query(
-    collection(db, OCCURRENCES_COLLECTION),
-    where('parentId', '==', parentId),
-    where('scheduledDate', '>=', minDate),
-    where('scheduledDate', '<=', today)
+  const snapshot = await getDocs(
+    occurrencesQueryForParent(db, parentId, minDate, today, viewerChildId)
   );
-
-  const snapshot = await getDocs(q);
   const now = new Date();
   const missedOccs: TaskOccurrence[] = [];
 
@@ -497,7 +624,6 @@ export async function updateMissedOccurrences(parentId?: string): Promise<TaskOc
     }
 
     const ref = doc(db, OCCURRENCES_COLLECTION, occ.id);
-    let escalatedThisRun = false;
 
     await runTransaction(db, async (transaction) => {
       const snap = await transaction.get(ref);
@@ -522,7 +648,6 @@ export async function updateMissedOccurrences(parentId?: string): Promise<TaskOc
         updates.escalatedTo = current.childId;
         updates.escalationStage = 1;
         updates.escalationDeliveryStatus = 'pending';
-        escalatedThisRun = true;
       }
 
       transaction.update(ref, updates);
@@ -535,11 +660,15 @@ export async function updateMissedOccurrences(parentId?: string): Promise<TaskOc
   return missedOccs;
 }
 
-export async function getHistoryOccurrencesForParent(parentId: string, daysBack = 14): Promise<TaskOccurrence[]> {
+export async function getHistoryOccurrencesForParent(
+  parentId: string,
+  daysBack = 14,
+  viewerChildId?: string
+): Promise<TaskOccurrence[]> {
   const today = todayString();
   const startDate = formatDate(addDays(new Date(), -daysBack));
 
-  const occs = await getOccurrencesForParent(parentId, startDate, today);
+  const occs = await getOccurrencesForParent(parentId, startDate, today, viewerChildId);
   return occs
     .filter((o) => (o.scheduledDate < today || o.status === 'completed' || o.status === 'missed') && o.status !== 'cancelled')
     .sort((a, b) => {

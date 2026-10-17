@@ -1,14 +1,15 @@
 import * as React from 'react';
-import { subscribeToRelationships, getRelationshipsForParent } from '../services/firestore/relationships';
-import { getUserProfilesBatch, getUserProfile } from '../services/firestore/users';
+import { subscribeToRelationships, getRelationshipsForParent, getRelationshipsForChild } from '../services/firestore/relationships';
+import { getUserProfilesBatch } from '../services/firestore/users';
+import { clearCachedRelationships } from '../services/localSession';
 import { useAuth } from './AuthContext';
-import type { Relationship } from '../models';
-import type { UserProfile } from '../models';
+import type { Relationship, UserProfile } from '../models';
 
 type RelationshipsContextValue = {
   relationships: Relationship[];
   parents: ParentProfile[];
   loading: boolean;
+  error: string | null;
   refresh: () => void;
 };
 
@@ -24,23 +25,38 @@ export function RelationshipsProvider(props: { children: React.ReactNode }) {
   const [relationships, setRelationships] = React.useState<Relationship[]>([]);
   const [parents, setParents] = React.useState<ParentProfile[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // Identifies the account the in-memory state belongs to. Any change (sign
+  // in, sign out, account switch) invalidates every cached relationship and
+  // profile so a new user can never observe the previous user's data.
+  const ownerKey = user && role ? `${user.uid}:${role}` : null;
+
+  const resetState = React.useCallback(() => {
+    setRelationships([]);
+    setParents([]);
+    setError(null);
+    setLoading(false);
+    void clearCachedRelationships();
+  }, []);
 
   const refresh = React.useCallback(async () => {
     if (!user || !role) {
-      setRelationships([]);
-      setParents([]);
-      setLoading(false);
+      resetState();
       return;
     }
     setLoading(true);
+    setError(null);
     try {
       const rels =
         role === 'child'
-          ? await (await import('../services/firestore/relationships')).getRelationshipsForChild(user.uid)
+          ? await getRelationshipsForChild(user.uid)
           : await getRelationshipsForParent(user.uid);
       setRelationships(rels);
 
-      const profiles = await getUserProfilesBatch(rels.map((r) => (role === 'child' ? r.parentId : r.childId)));
+      const profiles = await getUserProfilesBatch(
+        rels.map((r) => (role === 'child' ? r.parentId : r.childId))
+      );
       if (role === 'child') {
         setParents(
           rels.map((r) => ({
@@ -49,44 +65,80 @@ export function RelationshipsProvider(props: { children: React.ReactNode }) {
           }))
         );
       }
+    } catch (err: any) {
+      const code = err?.code;
+      if (code !== 'permission-denied' && code !== 'unavailable') {
+        console.warn('Failed to load relationships:', err);
+      }
+      setError('Unable to load your connections. Please check your connection and retry.');
+      setRelationships([]);
+      setParents([]);
     } finally {
       setLoading(false);
     }
-  }, [user, role]);
+  }, [user, role, resetState]);
 
   React.useEffect(() => {
-    if (!user || !role) {
-      setRelationships([]);
-      setParents([]);
-      setLoading(false);
+    if (ownerKey === null) {
+      resetState();
       return;
     }
 
-    const unsubscribe = subscribeToRelationships(user.uid, role, (rels) => {
+    let active = true;
+    setLoading(true);
+    setError(null);
+
+    const applyRelationships = async (rels: Relationship[]) => {
+      if (!active) return;
       setRelationships(rels);
-      const fetchProfiles = async () => {
-        const uid = user.uid;
-        const profiles = await getUserProfilesBatch(
-          rels.map((r) => (role === 'child' ? r.parentId : r.childId))
+      const profiles = await getUserProfilesBatch(
+        rels.map((r) => (role === 'child' ? r.parentId : r.childId))
+      );
+      if (!active) return;
+      if (role === 'child') {
+        setParents(
+          rels.map((r) => ({
+            relationship: r,
+            profile: profiles.get(r.parentId) ?? null,
+          }))
         );
-        if (role === 'child') {
-          setParents(
-            rels.map((r) => ({
-              relationship: r,
-              profile: profiles.get(r.parentId) ?? null,
-            }))
-          );
+      }
+    };
+
+    const unsubscribe = subscribeToRelationships(
+      user!.uid,
+      role!,
+      (rels) => {
+        if (!active) return;
+        void applyRelationships(rels).catch(() => {
+          if (active) setError('Unable to load connection details. Please retry.');
+        });
+        setLoading(false);
+      },
+      (listenerError: any) => {
+        if (!active) return;
+        // A permission error is terminal for this account: stop showing the
+        // previous session's data and let the user retry explicitly instead of
+        // silently retrying forever.
+        if (listenerError?.code !== 'permission-denied') {
+          console.warn('Relationships listener error:', listenerError);
         }
-      };
-      fetchProfiles().catch(() => {});
-      setLoading(false);
-    });
-    return unsubscribe;
-  }, [user, role]);
+        setRelationships([]);
+        setParents([]);
+        setError('Unable to load your connections. Please retry.');
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [ownerKey, user, role, resetState]);
 
   const value = React.useMemo(
-    () => ({ relationships, parents, loading, refresh }),
-    [relationships, parents, loading, refresh]
+    () => ({ relationships, parents, loading, error, refresh }),
+    [relationships, parents, loading, error, refresh]
   );
 
   return <RelationshipsContext.Provider value={value}>{props.children}</RelationshipsContext.Provider>;
@@ -114,11 +166,13 @@ export function useSelectedParent(): {
       ? selectedParentId
       : parents[0]?.profile?.uid ?? null;
 
+  // Reset the selection whenever the available parents change (sign out,
+  // account switch, or a revoked relationship) so a stale id is never used.
   React.useEffect(() => {
-    if (parents.length > 0 && !parents.some((p) => p.profile?.uid === effectiveId)) {
-      setSelectedParentId(parents[0].profile?.uid ?? null);
+    if (selectedParentId !== null && !parents.some((p) => p.profile?.uid === selectedParentId)) {
+      setSelectedParentId(null);
     }
-  }, [parents]);
+  }, [parents, selectedParentId]);
 
   return {
     selectedParent: parents.find((p) => p.profile?.uid === effectiveId) ?? null,

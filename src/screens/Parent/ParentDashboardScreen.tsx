@@ -143,8 +143,12 @@ export default function ParentDashboardScreen() {
       setCompletingId(occurrence.id);
       try {
         await completeOccurrence(occurrence.id, user.uid);
-      } catch {
-        // optimistically we already show pending, Firestore will retry
+      } catch (err: any) {
+        // Never report success before Firestore has persisted the change.
+        Alert.alert(
+          'Could Not Mark As Done',
+          err?.message ?? 'Please check your connection and try again.'
+        );
       } finally {
         setCompletingId(null);
       }

@@ -36,7 +36,7 @@ export default function PlanScreen() {
 
   const handleToggle = async (task: CareTask) => {
     try {
-      await toggleTaskActive(task.id, !task.active);
+      await toggleTaskActive(task.id, !task.active, task.assignedTo, task.createdBy);
       setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, active: !task.active } : t)));
     } catch {
       Alert.alert('Could Not Update', 'Please try again.');
@@ -51,7 +51,7 @@ export default function PlanScreen() {
         style: 'destructive',
         onPress: async () => {
           try {
-            await deleteCareTask(task.id);
+            await deleteCareTask(task.id, task.assignedTo, task.createdBy);
             setTasks((prev) => prev.filter((t) => t.id !== task.id));
           } catch {
             Alert.alert('Could Not Delete', 'Please try again.');

@@ -22,6 +22,9 @@ const MESSAGES_COLLECTION = 'messages';
 export async function getOrCreateConversation(relationshipId: string): Promise<string> {
   const db = getFirebaseDb();
   const conversationRef = doc(db, CONVERSATIONS_COLLECTION, relationshipId);
+  // Reading a document that does not exist yet is authorised by the rules
+  // through the relationship, not through the conversation itself, so this
+  // existence probe is safe and returns null when there is nothing there yet.
   const snap = await getDoc(conversationRef);
   if (!snap.exists()) {
     await setDoc(conversationRef, {

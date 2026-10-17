@@ -89,20 +89,23 @@ export default function ChildDashboardScreen() {
       },
       (err) => {
         console.error('ChildDashboard occurrences listener error:', err);
-      }
+      },
+      // The caregiver must constrain the query with their own uid so the
+      // security rules can prove it only returns their relationship's data.
+      user?.uid
     );
 
     return () => {
       mounted = false;
       unsubscribe();
     };
-  }, [parentUid, relationshipId, selectedParent?.profile?.name]);
+  }, [parentUid, relationshipId, selectedParent?.profile?.name, user?.uid]);
 
   const loadHistory = React.useCallback(() => {
     if (!parentUid) return;
     setHistoryLoading(true);
     setHistoryError(null);
-    getHistoryOccurrencesForParent(parentUid, 14)
+    getHistoryOccurrencesForParent(parentUid, 14, user?.uid)
       .then((items) => {
         setHistoryOccurrences(items);
         setHistoryLoading(false);
@@ -124,11 +127,11 @@ export default function ChildDashboardScreen() {
     if (!parentUid) return;
     const sub = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
-        updateMissedOccurrences(parentUid).catch(() => {});
+        updateMissedOccurrences(parentUid, user?.uid).catch(() => {});
       }
     });
     return () => sub.remove();
-  }, [parentUid]);
+  }, [parentUid, user?.uid]);
 
   const quickSend = async (type: TaskType, title: string) => {
     if (!user || !relationshipId || !parentUid) {

@@ -8,7 +8,6 @@ import {
   getLocalSession,
   saveConnectionEstablished,
   saveLocalSession,
-  type SavedUserSession,
 } from '../services/localSession';
 
 export type AuthStatus = 'loading' | 'unauthenticated' | 'authenticated';
@@ -33,6 +32,11 @@ export function AuthProvider(props: { children: React.ReactNode }) {
   const [hasConnected, setHasConnectedState] = React.useState(false);
   const [hydrated, setHydrated] = React.useState(false);
 
+  // Mirrors the `user` state so `loadRole` can stay referentially stable
+  // without ever reading a stale closure.
+  const userRef = React.useRef<User | null>(null);
+  userRef.current = user;
+
   // 1. Immediate local storage hydration on app boot
   React.useEffect(() => {
     let mounted = true;
@@ -46,11 +50,13 @@ export function AuthProvider(props: { children: React.ReactNode }) {
         setHasConnectedState(connected);
         if (savedSession) {
           setRole(savedSession.role);
-          setUser({
+          const hydratedUser = {
             uid: savedSession.uid,
             email: savedSession.email,
             displayName: savedSession.displayName,
-          } as unknown as User);
+          } as unknown as User;
+          userRef.current = hydratedUser;
+          setUser(hydratedUser);
           setStatus('authenticated');
         }
       } catch (err) {
@@ -64,41 +70,41 @@ export function AuthProvider(props: { children: React.ReactNode }) {
     };
   }, []);
 
-  const loadRole = React.useCallback(
-    async (uid: string, currentUser?: User | null) => {
-      setRoleError(false);
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const loadedRole = await getUserRole(uid);
-          if (loadedRole !== null) {
-            setRole(loadedRole);
-            const targetUser = currentUser ?? user;
-            if (targetUser) {
-              await saveLocalSession({
-                uid: targetUser.uid,
-                email: targetUser.email,
-                displayName: targetUser.displayName,
-                role: loadedRole,
-              });
-            }
-            return;
+  const loadRole = React.useCallback(async (uid: string, currentUser?: User | null) => {
+    setRoleError(false);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const loadedRole = await getUserRole(uid);
+        if (loadedRole !== null) {
+          setRole(loadedRole);
+          const targetUser = currentUser ?? userRef.current;
+          if (targetUser) {
+            await saveLocalSession({
+              uid: targetUser.uid,
+              email: targetUser.email,
+              displayName: targetUser.displayName,
+              role: loadedRole,
+            });
           }
-        } catch {
-          // Will retry
+          return;
         }
-        if (attempt < 2) {
-          await new Promise((res) => setTimeout(res, 400));
-        }
+      } catch {
+        // Will retry
       }
-      setRoleError(true);
-    },
-    [user]
-  );
+      if (attempt < 2) {
+        await new Promise((res) => setTimeout(res, 400));
+      }
+    }
+    setRoleError(true);
+  }, []);
 
   // 2. Firebase live auth listener synchronization
   React.useEffect(() => {
     const unsubscribe = subscribeToAuthState((firebaseUser) => {
       if (firebaseUser === null) {
+        // Sign-out: drop every piece of account-specific state so the next
+        // authenticated user can never observe the previous session.
+        userRef.current = null;
         setUser(null);
         setRole(null);
         setRoleError(false);
@@ -106,6 +112,7 @@ export function AuthProvider(props: { children: React.ReactNode }) {
         void clearLocalSession();
         return;
       }
+      userRef.current = firebaseUser;
       setUser(firebaseUser);
       setRoleError(false);
       setStatus('authenticated');
