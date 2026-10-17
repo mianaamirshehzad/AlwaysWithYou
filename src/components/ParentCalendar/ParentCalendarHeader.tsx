@@ -24,14 +24,16 @@ export default function ParentCalendarHeader(props: Props) {
           <Pressable
             onPress={props.onPrev}
             accessibilityRole="button"
-            accessibilityLabel="Previous month"
+            accessibilityLabel="Previous week"
+            hitSlop={10}
             style={({ pressed }) => [styles.navBtn, { opacity: pressed ? 0.85 : 1 }]}>
             <Ionicons name="chevron-back" size={16} color={Colors.alpha.white75} />
           </Pressable>
           <Pressable
             onPress={props.onNext}
             accessibilityRole="button"
-            accessibilityLabel="Next month"
+            accessibilityLabel="Next week"
+            hitSlop={10}
             style={({ pressed }) => [styles.navBtn, { opacity: pressed ? 0.85 : 1 }]}>
             <Ionicons name="chevron-forward" size={16} color={Colors.alpha.white75} />
           </Pressable>

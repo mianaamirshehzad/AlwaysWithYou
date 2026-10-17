@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as React from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
@@ -11,6 +11,8 @@ import {
   createCareTask,
   subscribeToOccurrencesForParent,
   getTodayOccurrences,
+  getHistoryOccurrencesForParent,
+  updateMissedOccurrences,
 } from '@/src/services/firestore/tasks';
 import { getInitials, todayString, formatTime12h, formatDateFull } from '@/src/utils/date';
 import CareCard, { type CareStatus } from '../../components/Dashboard/CareCard';
@@ -21,6 +23,9 @@ import ParentSwitcherModal from '../../components/ParentSwitcherModal';
 import CreateNewReminderModal from './CreateNewReminderModal';
 import Images from '../../assets/Images';
 import type { TaskType } from '../../models';
+import { deliverCaregiverEscalationAlert, registerPushTokenForUser } from '../../services/notifications';
+import EmptyState from '../../components/EmptyState';
+import ErrorBanner from '../../components/ErrorBanner';
 
 export default function ChildDashboardScreen() {
   const router = useRouter();
@@ -32,6 +37,9 @@ export default function ChildDashboardScreen() {
   const [createReminderOpen, setCreateReminderOpen] = React.useState(false);
   const [switcherOpen, setSwitcherOpen] = React.useState(false);
   const [occurrences, setOccurrences] = React.useState<any[]>([]);
+  const [historyOccurrences, setHistoryOccurrences] = React.useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = React.useState(false);
+  const [historyError, setHistoryError] = React.useState<string | null>(null);
   const [todayData, setTodayData] = React.useState<{ pending: any[]; completed: any[]; missed: any[]; upcoming: any[] }>({
     pending: [],
     completed: [],
@@ -39,14 +47,22 @@ export default function ChildDashboardScreen() {
     upcoming: [],
   });
   const [tasks, setTasks] = React.useState<any[]>([]);
+  const alertedOccurrences = React.useRef<Set<string>>(new Set());
 
   const parentUid = selectedParent?.profile?.uid ?? selectedParent?.relationship.parentId ?? null;
   const relationshipId = selectedParent?.relationship.id ?? null;
 
   React.useEffect(() => {
+    if (user?.uid) {
+      registerPushTokenForUser(user.uid).catch(() => {});
+    }
+  }, [user?.uid]);
+
+  React.useEffect(() => {
     if (!parentUid || !relationshipId) {
       setOccurrences([]);
       setTodayData({ pending: [], completed: [], missed: [], upcoming: [] });
+      setHistoryOccurrences([]);
       return;
     }
     let mounted = true;
@@ -58,7 +74,17 @@ export default function ChildDashboardScreen() {
       (occs) => {
         if (mounted) {
           setOccurrences(occs);
-          setTodayData(getTodayOccurrences(occs));
+          const classified = getTodayOccurrences(occs);
+          setTodayData(classified);
+
+          // Deliver native care alert to caregiver for newly missed occurrences
+          const parentName = selectedParent?.profile?.name;
+          for (const missedOcc of classified.missed) {
+            if (missedOcc.escalatedAt && !alertedOccurrences.current.has(missedOcc.id)) {
+              alertedOccurrences.current.add(missedOcc.id);
+              deliverCaregiverEscalationAlert(missedOcc, parentName).catch(() => {});
+            }
+          }
         }
       },
       (err) => {
@@ -70,7 +96,39 @@ export default function ChildDashboardScreen() {
       mounted = false;
       unsubscribe();
     };
-  }, [parentUid, relationshipId]);
+  }, [parentUid, relationshipId, selectedParent?.profile?.name]);
+
+  const loadHistory = React.useCallback(() => {
+    if (!parentUid) return;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    getHistoryOccurrencesForParent(parentUid, 14)
+      .then((items) => {
+        setHistoryOccurrences(items);
+        setHistoryLoading(false);
+      })
+      .catch((err) => {
+        console.warn('Failed to load history occurrences:', err);
+        setHistoryError('Unable to load history. Please check your connection.');
+        setHistoryLoading(false);
+      });
+  }, [parentUid]);
+
+  React.useEffect(() => {
+    if (timelineTab === 'history') {
+      loadHistory();
+    }
+  }, [timelineTab, loadHistory]);
+
+  React.useEffect(() => {
+    if (!parentUid) return;
+    const sub = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        updateMissedOccurrences(parentUid).catch(() => {});
+      }
+    });
+    return () => sub.remove();
+  }, [parentUid]);
 
   const quickSend = async (type: TaskType, title: string) => {
     if (!user || !relationshipId || !parentUid) {
@@ -179,7 +237,7 @@ export default function ChildDashboardScreen() {
                 <View style={styles.timelineList}>
                   {timelineTab === 'today'
                     ? renderToday(todayData, selectedParent?.profile?.name ?? '')
-                    : renderHistory(occurrences)}
+                    : renderHistory(historyOccurrences, historyLoading, historyError, loadHistory)}
                 </View>
               </View>
             </>
@@ -273,14 +331,39 @@ function renderToday(data: { pending: any[]; completed: any[]; missed: any[]; up
     );
   });
   if (cards.length === 0) {
-    return <Text style={styles.noTasks}>No reminders scheduled for today.</Text>;
+    return (
+      <EmptyState
+        compact
+        iconName="sunny-outline"
+        title="No Reminders Today"
+        description="All clear! No care tasks are scheduled for today."
+      />
+    );
   }
   return cards;
 }
 
-function renderHistory(occurrences: any[]) {
+function renderHistory(
+  occurrences: any[],
+  loading: boolean,
+  error: string | null,
+  onRetry: () => void
+) {
+  if (loading) {
+    return <ActivityIndicator size="small" color={Colors.dashboard.accent} style={{ paddingVertical: 24 }} />;
+  }
+  if (error) {
+    return <ErrorBanner message={error} onRetry={onRetry} retryLabel="Retry" />;
+  }
   if (occurrences.length === 0) {
-    return <Text style={styles.noTasks}>No activity for today yet.</Text>;
+    return (
+      <EmptyState
+        compact
+        iconName="time-outline"
+        title="No Past Activity"
+        description="Completed and missed reminders will appear here."
+      />
+    );
   }
   return occurrences.map((o) => {
     const status: CareStatus =
@@ -289,8 +372,14 @@ function renderHistory(occurrences: any[]) {
       <CareCard
         key={o.id}
         title={o.title ?? 'Reminder'}
-        time={formatTime12h(o.scheduledTime)}
-        iconName="time-outline"
+        time={`${o.scheduledDate} • ${formatTime12h(o.scheduledTime)}`}
+        iconName={
+          o.status === 'completed'
+            ? 'checkmark-circle-outline'
+            : o.status === 'missed'
+            ? 'alert-circle-outline'
+            : 'time-outline'
+        }
         status={status}
         statusLabel={o.status === 'completed' ? 'Completed' : o.status === 'missed' ? 'Missed' : 'Pending'}
       />

@@ -10,6 +10,7 @@ export type UserProfile = {
   phone?: string;
   photoUrl?: string;
   dateOfBirth?: string;
+  pushToken?: string;
   createdAt: Timestamp;
 };
 
@@ -28,7 +29,7 @@ export type TaskType = 'medicine' | 'water' | 'walk' | 'exercise' | 'call' | 'cu
 
 export type Frequency = 'once' | 'daily' | 'weekly' | 'custom';
 
-export type TaskStatus = 'pending' | 'completed' | 'missed' | 'cancelled';
+export type TaskStatus = 'pending' | 'completed' | 'missed' | 'cancelled' | 'snoozed';
 
 export type CareTask = {
   id: string;
@@ -61,19 +62,41 @@ export type TaskOccurrence = {
   scheduledDate: string; // YYYY-MM-DD
   scheduledTime: string; // HH:mm
   status: TaskStatus;
+  snoozedUntil?: Timestamp;
+  snoozeCount?: number;
   completedAt?: Timestamp;
   completedBy?: string;
+  escalatedAt?: Timestamp;
+  escalatedTo?: string;
+  escalationStage?: number;
+  escalationDeliveryStatus?: 'pending' | 'delivered' | 'failed' | 'not_configured';
+  escalationDeliveredAt?: Timestamp;
+  escalationError?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 };
 
+export const SNOOZE_CONFIG = {
+  DEFAULT_MINUTES: 15,
+  ALLOWED_DURATIONS: [5, 10, 15, 30] as const,
+  MAX_SNOOZE_COUNT: 3,
+} as const;
+
+export const ESCALATION_CONFIG = {
+  GRACE_PERIOD_MINUTES: 30,
+} as const;
+
 export type MessageStatus = 'sent' | 'delivered' | 'read';
+export type MessageType = 'text' | 'audio';
 
 export type Message = {
   id: string;
   conversationId: string;
   senderId: string;
   text: string;
+  messageType?: MessageType;
+  audioUrl?: string;
+  audioDurationMs?: number;
   status: MessageStatus;
   createdAt: Timestamp;
 };

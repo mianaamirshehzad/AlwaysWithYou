@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as React from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import Colors from '@/src/assets/Colors';
@@ -8,15 +8,19 @@ import Images from '../../assets/Images';
 import FloatingActionButton from '../../components/Dashboard/FloatingActionButton';
 import ParentReminderCard from '../../components/Dashboard/ParentReminderCard';
 import NotificationAcknowledgementModal from '../../components/NotificationAcknowledgementModal';
+import CallConfirmationModal from '../../components/CallConfirmationModal';
 import UpcomingReminderCard from '../../components/UpcomingReminderCard';
 import { useAuth } from '../../context/AuthContext';
+import { usePreferences } from '../../context/PreferencesContext';
 import { useRelationships } from '../../context/RelationshipsContext';
 import {
   subscribeToOccurrencesForParent,
   getTodayOccurrences,
   completeOccurrence,
+  snoozeOccurrence,
   updateMissedOccurrences,
 } from '../../services/firestore/tasks';
+import { reconcileScheduledNotifications, registerPushTokenForUser } from '../../services/notifications';
 import { getUserProfile } from '../../services/firestore/users';
 import type { UserProfile, TaskOccurrence } from '../../models';
 import { todayString, formatTime12h } from '../../utils/date';
@@ -33,6 +37,7 @@ const TASK_ICON_MAP: Record<string, React.ComponentProps<typeof Ionicons>['name'
 
 export default function ParentDashboardScreen() {
   const { user } = useAuth();
+  const { preferences } = usePreferences();
   const { relationships } = useRelationships();
 
   const [parentProfile, setParentProfile] = React.useState<UserProfile | null>(null);
@@ -40,13 +45,17 @@ export default function ParentDashboardScreen() {
   const [occurrences, setOccurrences] = React.useState<TaskOccurrence[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [notifOpen, setNotifOpen] = React.useState(false);
+  const [callModalOpen, setCallModalOpen] = React.useState(false);
   const [completingId, setCompletingId] = React.useState<string | null>(null);
+  const [snoozingId, setSnoozingId] = React.useState<string | null>(null);
 
   const today = React.useMemo(() => formatToday(new Date()), []);
 
   React.useEffect(() => {
     if (!user) return;
     let mounted = true;
+
+    registerPushTokenForUser(user.uid).catch(() => {});
 
     getUserProfile(user.uid).then((p) => {
       if (mounted) setParentProfile(p);
@@ -143,11 +152,37 @@ export default function ParentDashboardScreen() {
     [user, completingId]
   );
 
+  const handleSnooze = React.useCallback(
+    async (occurrence: TaskOccurrence) => {
+      if (!user || snoozingId) return;
+      setSnoozingId(occurrence.id);
+      try {
+        const duration = preferences?.snoozeMinutes ?? 15;
+        await snoozeOccurrence(occurrence.id, duration, user.uid);
+        setNotifOpen(false);
+      } catch (err: any) {
+        Alert.alert('Could Not Snooze', err?.message ?? 'Please try again.');
+      } finally {
+        setSnoozingId(null);
+      }
+    },
+    [user, snoozingId, preferences]
+  );
+
+  React.useEffect(() => {
+    if (!user) return;
+    const sub = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        updateMissedOccurrences(user.uid).catch(() => {});
+        reconcileScheduledNotifications(user.uid, preferences).catch(() => {});
+      }
+    });
+    return () => sub.remove();
+  }, [user, preferences]);
+
   const handleCall = React.useCallback(() => {
-    if (childPhone) {
-      Linking.openURL(`tel:${childPhone}`);
-    }
-  }, [childPhone]);
+    setCallModalOpen(true);
+  }, []);
 
   React.useEffect(() => {
     if (pending.length > 0) {
@@ -303,11 +338,24 @@ export default function ParentDashboardScreen() {
           title={primaryPending?.title ?? 'Care Reminder'}
           message={primaryPending?.note ? `"${primaryPending.note}"` : undefined}
           imageSource={primaryPending ? (Images as any)[primaryPending.type] ?? Images.water : Images.water}
+          snoozeMinutes={preferences?.snoozeMinutes ?? 15}
           onAcknowledge={() => {
             if (primaryPending) {
               handleComplete(primaryPending);
             }
           }}
+          onSnooze={() => {
+            if (primaryPending) {
+              handleSnooze(primaryPending);
+            }
+          }}
+        />
+        <CallConfirmationModal
+          visible={callModalOpen}
+          contactName={firstChildName ?? 'Your Caregiver'}
+          relationshipLabel="Caregiver"
+          phoneNumber={childPhone}
+          onClose={() => setCallModalOpen(false)}
         />
       </View>
     </SafeAreaView>

@@ -11,11 +11,17 @@ import childSettingsColors from '../../components/ChildSettings/colors';
 import InviteParentModal from '../../components/ChildSettings/InviteParentModal';
 import MyParentsSection from '../../components/ChildSettings/MyParentsSection';
 import PreferencesSection from '../../components/ChildSettings/PreferencesSection';
+import ErrorBanner from '../../components/ErrorBanner';
 import { useAuth } from '../../context/AuthContext';
 import { useRelationships } from '../../context/RelationshipsContext';
 import { usePreferences } from '../../context/PreferencesContext';
 import { getCurrentUser, logOut } from '../../services/auth';
 import { createInvitation } from '../../services/firestore/invitations';
+import {
+  requestNotificationPermission,
+  openNotificationSettings,
+} from '../../services/notifications';
+import { openLegalDocument } from '../../constants/legal';
 import { getInitials } from '../../utils/date';
 
 export default function ChildSettingsScreen() {
@@ -23,7 +29,7 @@ export default function ChildSettingsScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
   const { parents } = useRelationships();
-  const { preferences, update } = usePreferences();
+  const { preferences, update, saveError, retrySave } = usePreferences();
 
   const [loggingOut, setLoggingOut] = React.useState(false);
 
@@ -93,15 +99,15 @@ export default function ChildSettingsScreen() {
   };
 
   const handleHelpPress = () => {
-    Alert.alert('Help & Support', 'Our support team is here for you.');
+    openLegalDocument('support');
   };
 
   const handlePrivacyPress = () => {
-    Alert.alert('Privacy Policy', 'Your data stays within your Firebase project.');
+    openLegalDocument('privacy');
   };
 
   const handleTermsPress = () => {
-    Alert.alert('Terms of Service', 'This app is for family care coordination.');
+    openLegalDocument('terms');
   };
 
   return (
@@ -130,9 +136,34 @@ export default function ChildSettingsScreen() {
 
           <MyParentsSection parents={parentEntries} onAddParent={handleAddParent} />
 
+          {saveError ? (
+            <ErrorBanner
+              message={saveError}
+              onRetry={retrySave}
+              retryLabel="Retry"
+              style={{ marginHorizontal: 0 }}
+            />
+          ) : null}
+
           <PreferencesSection
             pushNotifications={preferences?.pushNotifications ?? true}
-            onTogglePushNotifications={(v) => update({ pushNotifications: v })}
+            onTogglePushNotifications={async (v) => {
+              if (v) {
+                const res = await requestNotificationPermission();
+                if (!res.granted) {
+                  Alert.alert(
+                    'Notifications Disabled',
+                    'To receive care updates, please enable notifications in your device settings.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Settings', onPress: openNotificationSettings },
+                    ]
+                  );
+                  return;
+                }
+              }
+              await update({ pushNotifications: v });
+            }}
             dailySummaryEmail={preferences?.dailySummaryEmail ?? false}
             onToggleDailySummaryEmail={(v) => update({ dailySummaryEmail: v })}
             reminderSoundLabel="Device"
@@ -230,4 +261,21 @@ const styles = StyleSheet.create({
   },
   version: { color: childSettingsColors.textSecondary, fontSize: 11, fontWeight: '700' },
   love: { color: childSettingsColors.textMuted, fontSize: 11, fontWeight: '600' },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: childSettingsColors.accentSoft,
+    borderColor: childSettingsColors.accentBorder,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  errorText: {
+    color: childSettingsColors.accent,
+    fontSize: 13,
+    fontWeight: '700',
+    flex: 1,
+  },
 });

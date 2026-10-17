@@ -4,38 +4,40 @@ import {
   getUserPreferences,
   updateUserPreferences,
 } from '../services/firestore/users';
-import type { UserPreferences } from '../models';
+import {
+  cancelAllNotifications,
+  reconcileScheduledNotifications,
+} from '../services/notifications';
+import { DEFAULT_USER_PREFERENCES, type UserPreferences } from '../models';
 
 type PreferencesContextValue = {
-  preferences: UserPreferences | null;
+  preferences: UserPreferences;
   loading: boolean;
+  saveError: string | null;
   update: (prefs: Partial<UserPreferences>) => Promise<void>;
-};
-
-const DEFAULT_PREFS: UserPreferences = {
-  pushNotifications: true,
-  dailySummaryEmail: false,
-  soundEnabled: true,
-  vibrateEnabled: false,
-  snoozeMinutes: 15,
-  textSize: 0.5,
+  retrySave: () => Promise<void>;
 };
 
 const PreferencesContext = React.createContext<PreferencesContextValue | undefined>(undefined);
 
 export function PreferencesProvider(props: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const [preferences, setPreferences] = React.useState<UserPreferences | null>(null);
+  const [preferences, setPreferences] = React.useState<UserPreferences>(DEFAULT_USER_PREFERENCES);
   const [loading, setLoading] = React.useState(true);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+  const [pendingUpdates, setPendingUpdates] = React.useState<Partial<UserPreferences> | null>(null);
 
   React.useEffect(() => {
     if (!user) {
-      setPreferences(null);
+      setPreferences(DEFAULT_USER_PREFERENCES);
       setLoading(false);
+      setSaveError(null);
+      setPendingUpdates(null);
       return;
     }
     let mounted = true;
     setLoading(true);
+    setSaveError(null);
     getUserPreferences(user.uid)
       .then((prefs) => {
         if (mounted) {
@@ -43,9 +45,10 @@ export function PreferencesProvider(props: { children: React.ReactNode }) {
           setLoading(false);
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        console.warn('Error fetching preferences:', err);
         if (mounted) {
-          setPreferences(DEFAULT_PREFS);
+          setPreferences(DEFAULT_USER_PREFERENCES);
           setLoading(false);
         }
       });
@@ -57,19 +60,41 @@ export function PreferencesProvider(props: { children: React.ReactNode }) {
   const update = React.useCallback(
     async (prefs: Partial<UserPreferences>) => {
       if (!user) return;
-      setPreferences((prev) => ({ ...(prev ?? DEFAULT_PREFS), ...prefs }));
+      const merged = { ...preferences, ...prefs };
+      setPreferences(merged);
+      setSaveError(null);
       try {
         await updateUserPreferences(user.uid, prefs);
-      } catch {
-        // keep local optimistic state, Firestore write will retry later
+        setPendingUpdates(null);
+
+        // Reconcile notifications based on preference changes
+        if (prefs.pushNotifications === false) {
+          await cancelAllNotifications();
+        } else if (
+          prefs.pushNotifications === true ||
+          prefs.soundEnabled !== undefined ||
+          prefs.snoozeMinutes !== undefined
+        ) {
+          await reconcileScheduledNotifications(user.uid, merged);
+        }
+      } catch (err: any) {
+        console.warn('Failed to persist user preferences:', err);
+        setSaveError('Failed to save settings. Please tap to retry.');
+        setPendingUpdates(prefs);
       }
     },
-    [user]
+    [user, preferences]
   );
 
+  const retrySave = React.useCallback(async () => {
+    if (pendingUpdates) {
+      await update(pendingUpdates);
+    }
+  }, [pendingUpdates, update]);
+
   const value = React.useMemo(
-    () => ({ preferences: preferences ?? DEFAULT_PREFS, loading, update }),
-    [preferences, loading, update]
+    () => ({ preferences, loading, saveError, update, retrySave }),
+    [preferences, loading, saveError, update, retrySave]
   );
 
   return <PreferencesContext.Provider value={value}>{props.children}</PreferencesContext.Provider>;

@@ -9,6 +9,8 @@ import {
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 
 import { getFirebaseAuth, getFirebaseDb } from './firebase';
+import { cancelAllNotifications } from './notifications';
+import { clearLocalSession, saveLocalSession } from './localSession';
 
 export type UserRole = 'child' | 'parent';
 
@@ -42,6 +44,13 @@ export async function createAccount(input: CreateAccountInput): Promise<User> {
       phone: input.phone?.trim() ?? null,
       createdAt: serverTimestamp(),
     });
+    await saveLocalSession({
+      uid: user.uid,
+      email,
+      displayName: name,
+      role: input.role,
+      phone: input.phone?.trim() ?? null,
+    });
     return user;
   } catch (error) {
     // If writing the Firestore profile fails, remove the created auth user so the user can retry without collision
@@ -56,6 +65,12 @@ export async function signInWithEmail(input: SignInInput): Promise<User> {
 }
 
 export async function logOut(): Promise<void> {
+  try {
+    await cancelAllNotifications();
+  } catch {
+    // best-effort cleanup
+  }
+  await clearLocalSession();
   await signOut(getFirebaseAuth());
 }
 

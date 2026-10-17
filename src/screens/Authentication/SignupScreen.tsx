@@ -17,6 +17,7 @@ import {
   isValidName,
   type UserRole,
 } from '../../services/auth';
+import { openLegalDocument } from '../../constants/legal';
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -143,11 +144,19 @@ export default function SignupScreen() {
 
           <Text style={styles.terms}>
             By creating an account, you agree to our{' '}
-            <Text style={styles.link} onPress={() => {}}>
+            <Text
+              style={styles.link}
+              onPress={() => openLegalDocument('terms')}
+              accessibilityRole="link"
+              accessibilityLabel="Terms of Service">
               Terms of Service
             </Text>{' '}
             and{' '}
-            <Text style={styles.link} onPress={() => {}}>
+            <Text
+              style={styles.link}
+              onPress={() => openLegalDocument('privacy')}
+              accessibilityRole="link"
+              accessibilityLabel="Privacy Policy">
               Privacy Policy
             </Text>
             .

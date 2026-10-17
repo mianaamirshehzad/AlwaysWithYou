@@ -8,6 +8,7 @@ import WeekStrip, { WeekDay } from '../../components/ParentCalendar/WeekStrip';
 import ProgressCard from '../../components/ParentCalendar/ProgressCard';
 import DailyCareSection from '../../components/ParentCalendar/DailyCareSection';
 import CalendarPromoCard from '../../components/ParentCalendar/CalendarPromoCard';
+import EmptyState from '../../components/EmptyState';
 import { useAuth } from '../../context/AuthContext';
 import { useRelationships } from '../../context/RelationshipsContext';
 import {
@@ -133,7 +134,13 @@ export default function ParentCalendarScreen() {
                 items={dailyItems}
                 onViewAll={() => {}}
               />
-            ) : null}
+            ) : (
+              <EmptyState
+                iconName="calendar-outline"
+                title="No Reminders Scheduled"
+                description="There are no care reminders scheduled for this date."
+              />
+            )}
 
             <CalendarPromoCard />
           </>

@@ -36,22 +36,61 @@ export async function getOrCreateConversation(relationshipId: string): Promise<s
 export async function sendMessage(
   relationshipId: string,
   senderId: string,
-  text: string
+  text: string,
+  extra?: {
+    messageType?: 'text' | 'audio';
+    audioUrl?: string;
+    audioDurationMs?: number;
+  }
 ): Promise<string> {
   const db = getFirebaseDb();
   const conversationId = await getOrCreateConversation(relationshipId);
-  const ref = await addDoc(collection(db, MESSAGES_COLLECTION), {
+  const data: Record<string, any> = {
     conversationId,
     senderId,
     text: text.trim(),
+    messageType: extra?.messageType ?? 'text',
     status: 'sent',
     createdAt: serverTimestamp(),
-  });
+  };
+  if (extra?.audioUrl) {
+    data.audioUrl = extra.audioUrl;
+  }
+  if (typeof extra?.audioDurationMs === 'number') {
+    data.audioDurationMs = extra.audioDurationMs;
+  }
+
+  const ref = await addDoc(collection(db, MESSAGES_COLLECTION), data);
   await updateDoc(doc(db, CONVERSATIONS_COLLECTION, conversationId), {
-    lastMessage: text.trim(),
+    lastMessage: extra?.messageType === 'audio' ? '🎤 Voice message' : text.trim(),
     lastMessageAt: serverTimestamp(),
   });
   return ref.id;
+}
+
+export async function sendMessageWithRetry(
+  relationshipId: string,
+  senderId: string,
+  text: string,
+  extra?: {
+    messageType?: 'text' | 'audio';
+    audioUrl?: string;
+    audioDurationMs?: number;
+  },
+  maxRetries: number = 2
+): Promise<string> {
+  let lastError: any;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await sendMessage(relationshipId, senderId, text, extra);
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        await new Promise((res) => setTimeout(res, 500 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError;
 }
 
 export function subscribeToMessages(

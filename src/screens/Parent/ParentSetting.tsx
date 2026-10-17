@@ -11,25 +11,30 @@ import CaregiverCard from '../../components/ParentSettings/CaregiverCard';
 import SnoozeDurationSection from '../../components/ParentSettings/SnoozeDurationSection';
 import SoundAlertsSection from '../../components/ParentSettings/SoundAlertsSection';
 import TextSizeSection from '../../components/ParentSettings/TextSizeSection';
+import CallConfirmationModal from '../../components/CallConfirmationModal';
+import ErrorBanner from '../../components/ErrorBanner';
+import ParentProfileModal from '../../components/ParentSettings/ParentProfileModal';
 import { useAuth } from '../../context/AuthContext';
 import { usePreferences } from '../../context/PreferencesContext';
 import { useRelationships } from '../../context/RelationshipsContext';
 import { getUserProfile } from '../../services/firestore/users';
 import { logOut } from '../../services/auth';
+import { openLegalDocument } from '../../constants/legal';
 import type { UserProfile } from '../../models';
-import * as Linking from 'expo-linking';
 
 export default function ParentSetting() {
   const router = useRouter();
   const navigation = useNavigation();
   const { user } = useAuth();
-  const { preferences, update } = usePreferences();
+  const { preferences, update, saveError, retrySave } = usePreferences();
   const { relationships } = useRelationships();
 
   const [profile, setProfile] = React.useState<UserProfile | null>(null);
   const [childProfile, setChildProfile] = React.useState<UserProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = React.useState(true);
   const [loggingOut, setLoggingOut] = React.useState(false);
+  const [callModalOpen, setCallModalOpen] = React.useState(false);
+  const [profileModalOpen, setProfileModalOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!user) return;
@@ -73,12 +78,8 @@ export default function ParentSetting() {
   };
 
   const handleCallChild = React.useCallback(() => {
-    if (childProfile?.phone) {
-      Linking.openURL(`tel:${childProfile.phone}`);
-    } else {
-      Alert.alert('No Phone Number', 'The child has not provided a phone number yet.');
-    }
-  }, [childProfile]);
+    setCallModalOpen(true);
+  }, []);
 
   const playSound = preferences?.soundEnabled ?? true;
   const vibrate = preferences?.vibrateEnabled ?? false;
@@ -118,6 +119,19 @@ export default function ParentSetting() {
               showBadge
             />
 
+            <Pressable
+              onPress={() => setProfileModalOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Edit your profile"
+              style={({ pressed }) => [styles.editProfileBtn, { opacity: pressed ? 0.85 : 1 }]}>
+              <Ionicons name="pencil-outline" size={16} color={Colors.dashboard.accentText} />
+              <Text style={styles.editProfileText}>Edit Profile</Text>
+            </Pressable>
+
+            {saveError ? (
+              <ErrorBanner message={saveError} onRetry={retrySave} retryLabel="Retry" />
+            ) : null}
+
             <SoundAlertsSection
               playSound={playSound}
               onTogglePlaySound={(v) => update({ soundEnabled: v })}
@@ -138,6 +152,42 @@ export default function ParentSetting() {
               />
             )}
 
+            <View style={styles.legalSection}>
+              <Pressable
+                onPress={() => openLegalDocument('privacy')}
+                accessibilityRole="link"
+                accessibilityLabel="Privacy Policy"
+                style={({ pressed }) => [styles.legalRow, { opacity: pressed ? 0.8 : 1 }]}>
+                <Ionicons name="shield-checkmark-outline" size={18} color={Colors.alpha.white55} />
+                <Text style={styles.legalText}>Privacy Policy</Text>
+                <Ionicons name="chevron-forward" size={16} color={Colors.alpha.white25} />
+              </Pressable>
+
+              <View style={styles.legalDivider} />
+
+              <Pressable
+                onPress={() => openLegalDocument('terms')}
+                accessibilityRole="link"
+                accessibilityLabel="Terms of Service"
+                style={({ pressed }) => [styles.legalRow, { opacity: pressed ? 0.8 : 1 }]}>
+                <Ionicons name="document-text-outline" size={18} color={Colors.alpha.white55} />
+                <Text style={styles.legalText}>Terms of Service</Text>
+                <Ionicons name="chevron-forward" size={16} color={Colors.alpha.white25} />
+              </Pressable>
+
+              <View style={styles.legalDivider} />
+
+              <Pressable
+                onPress={() => openLegalDocument('support')}
+                accessibilityRole="link"
+                accessibilityLabel="Help and Support"
+                style={({ pressed }) => [styles.legalRow, { opacity: pressed ? 0.8 : 1 }]}>
+                <Ionicons name="help-circle-outline" size={18} color={Colors.alpha.white55} />
+                <Text style={styles.legalText}>Help & Support</Text>
+                <Ionicons name="chevron-forward" size={16} color={Colors.alpha.white25} />
+              </Pressable>
+            </View>
+
             <Pressable onPress={handleSignOut} accessibilityRole="button" accessibilityLabel="Sign out" style={({ pressed }) => [styles.signOut, { opacity: pressed ? 0.9 : 1 }]}>
               <Text style={styles.signOutText}>{loggingOut ? 'Signing Out...' : 'Sign Out'}</Text>
             </Pressable>
@@ -145,6 +195,25 @@ export default function ParentSetting() {
             <Text style={styles.version}>Version 2.4.0</Text>
           </ScrollView>
         )}
+        <CallConfirmationModal
+          visible={callModalOpen}
+          contactName={childProfile?.name ?? 'Your Caregiver'}
+          relationshipLabel="Caregiver"
+          phoneNumber={childProfile?.phone}
+          onClose={() => setCallModalOpen(false)}
+        />
+        {user ? (
+          <ParentProfileModal
+            visible={profileModalOpen}
+            parentUid={user.uid}
+            initialName={profile?.name ?? ''}
+            initialPhone={profile?.phone ?? ''}
+            onClose={() => setProfileModalOpen(false)}
+            onSaved={(newName, newPhone) => {
+              setProfile((p) => (p ? { ...p, name: newName, phone: newPhone } : p));
+            }}
+          />
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -191,4 +260,49 @@ const styles = StyleSheet.create({
   },
   signOutText: { color: Colors.dashboard.danger, fontSize: 14, fontWeight: '900' },
   version: { textAlign: 'center', color: Colors.alpha.white28, fontSize: 11, fontWeight: '900', marginTop: 4 },
+  editProfileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    alignSelf: 'center',
+    minHeight: 44,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+    backgroundColor: Colors.dashboard.accentSoftBg,
+    borderWidth: 1,
+    borderColor: Colors.dashboard.accentSoftBorder,
+    marginTop: -4,
+  },
+  editProfileText: {
+    color: Colors.dashboard.accentText,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  legalSection: {
+    backgroundColor: Colors.dashboard.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.dashboard.border,
+    overflow: 'hidden',
+  },
+  legalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 12,
+    minHeight: 48,
+  },
+  legalText: {
+    color: Colors.dashboard.text,
+    fontSize: 14,
+    fontWeight: '700',
+    flex: 1,
+  },
+  legalDivider: {
+    height: 1,
+    backgroundColor: Colors.alpha.white08,
+    marginHorizontal: 16,
+  },
 });

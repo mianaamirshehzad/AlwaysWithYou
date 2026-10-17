@@ -21,6 +21,7 @@ export default function WeekStrip(props: Props) {
             key={d.date.toISOString()}
             onPress={() => props.onSelect(d.date)}
             accessibilityRole="button"
+            accessibilityLabel={`${d.dow}, day ${d.day}`}
             accessibilityState={{ selected: on }}
             style={[styles.cell, on && styles.cellOn]}>
             <Text style={[styles.dow, on && styles.dowOn]}>{d.dow}</Text>
@@ -40,6 +41,7 @@ const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
   cell: {
     flex: 1,
+    minHeight: 48,
     paddingVertical: 10,
     borderRadius: 16,
     backgroundColor: Colors.dashboard.surface,

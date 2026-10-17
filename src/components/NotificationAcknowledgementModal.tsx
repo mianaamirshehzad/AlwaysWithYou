@@ -15,6 +15,7 @@ type Props = {
   title?: string;
   message?: string;
   imageSource?: ImageSourcePropType;
+  snoozeMinutes?: number;
   onAcknowledge?: () => void;
   onSnooze?: () => void;
 };
@@ -25,6 +26,7 @@ export default function NotificationAcknowledgementModal(props: Props) {
   const title = props.title ?? 'Drink Water';
   const message = props.message ?? '"Hi Dad, a gentle\nreminder to drink a\nglass of water right\nnow!"';
   const imageSource = props.imageSource ?? Images.water;
+  const snoozeMinutes = props.snoozeMinutes ?? 15;
 
   return (
     <Modal visible={props.visible} animationType="fade" presentationStyle="fullScreen" onRequestClose={props.onClose}>
@@ -95,10 +97,10 @@ export default function NotificationAcknowledgementModal(props: Props) {
           <Pressable
             onPress={() => props.onSnooze?.()}
             accessibilityRole="button"
-            accessibilityLabel="Remind me in 15 minutes"
+            accessibilityLabel={`Remind me in ${snoozeMinutes} minutes`}
             style={({ pressed }) => [styles.snoozeRow, { opacity: pressed ? 0.9 : 1 }]}>
             <Ionicons name="time-outline" size={16} color={Colors.alpha.white45} />
-            <Text style={styles.snoozeText}>Remind me in 15 minutes</Text>
+            <Text style={styles.snoozeText}>{`Remind me in ${snoozeMinutes} minutes`}</Text>
           </Pressable>
         </View>
       </SafeAreaView>

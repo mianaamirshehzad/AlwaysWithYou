@@ -65,6 +65,7 @@ export default function ParentReminderCard(props: Props) {
             <Pressable
               onPress={props.onPressAction}
               accessibilityRole="button"
+              accessibilityLabel={`${props.actionLabel ?? 'Mark Done'}: ${props.title}`}
               style={({ pressed }) => [styles.actionBtn, { opacity: pressed ? 0.92 : 1 }]}>
               <Text style={styles.actionText}>{props.actionLabel ?? 'Done'}</Text>
               <View style={styles.actionIcon}>
