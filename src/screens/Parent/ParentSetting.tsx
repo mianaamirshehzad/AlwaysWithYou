@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import * as React from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,6 +25,7 @@ import type { UserProfile } from '../../models';
 export default function ParentSetting() {
   const router = useRouter();
   const navigation = useNavigation();
+  const params = useLocalSearchParams<{ editProfile?: string }>();
   const { user } = useAuth();
   const { preferences, update, saveError, retrySave } = usePreferences();
   const { relationships } = useRelationships();
@@ -35,6 +36,12 @@ export default function ParentSetting() {
   const [loggingOut, setLoggingOut] = React.useState(false);
   const [callModalOpen, setCallModalOpen] = React.useState(false);
   const [profileModalOpen, setProfileModalOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (params.editProfile === 'true') {
+      setProfileModalOpen(true);
+    }
+  }, [params.editProfile]);
 
   React.useEffect(() => {
     if (!user) return;
@@ -70,7 +77,7 @@ export default function ParentSetting() {
     setLoggingOut(true);
     try {
       await logOut();
-      router.replace('/');
+      router.replace('/login');
     } catch {
       setLoggingOut(false);
       Alert.alert('Sign Out Failed', 'Please try again.');
@@ -101,7 +108,7 @@ export default function ParentSetting() {
             style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.9 : 1 }]}>
             <Ionicons name="arrow-back" size={18} color={Colors.alpha.white85} />
           </Pressable>
-          <Text style={styles.headerTitle}>Settings</Text>
+          <Text style={styles.headerTitle}>Profile</Text>
           <View style={{ width: 42 }} />
         </View>
 
@@ -114,7 +121,7 @@ export default function ParentSetting() {
             <UserProfileHeader
               name={userName}
               subtitle={subtitle}
-              avatarSource={Images.hands}
+              avatarSource={profile?.photoUrl ? { uri: profile.photoUrl } : Images.hands}
               size="lg"
               showBadge
             />
@@ -208,9 +215,19 @@ export default function ParentSetting() {
             parentUid={user.uid}
             initialName={profile?.name ?? ''}
             initialPhone={profile?.phone ?? ''}
+            initialPhotoUrl={profile?.photoUrl}
             onClose={() => setProfileModalOpen(false)}
-            onSaved={(newName, newPhone) => {
-              setProfile((p) => (p ? { ...p, name: newName, phone: newPhone } : p));
+            onSaved={(newName, newPhone, newPhotoUrl) => {
+              setProfile((p) =>
+                p
+                  ? {
+                      ...p,
+                      name: newName,
+                      phone: newPhone,
+                      ...(newPhotoUrl !== undefined ? { photoUrl: newPhotoUrl } : {}),
+                    }
+                  : p
+              );
             }}
           />
         ) : null}

@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import * as React from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Images from '../../assets/Images';
 import AppInfoSection from '../../components/ChildSettings/AppInfoSection';
 import ChildProfileCard from '../../components/ChildSettings/ChildProfileCard';
+import ChildProfileModal from '../../components/ChildSettings/ChildProfileModal';
 import childSettingsColors from '../../components/ChildSettings/colors';
 import InviteParentModal from '../../components/ChildSettings/InviteParentModal';
 import MyParentsSection from '../../components/ChildSettings/MyParentsSection';
@@ -17,26 +18,54 @@ import { useRelationships } from '../../context/RelationshipsContext';
 import { usePreferences } from '../../context/PreferencesContext';
 import { getCurrentUser, logOut } from '../../services/auth';
 import { createInvitation } from '../../services/firestore/invitations';
+import { getUserProfile } from '../../services/firestore/users';
 import {
   requestNotificationPermission,
   openNotificationSettings,
 } from '../../services/notifications';
 import { openLegalDocument } from '../../constants/legal';
-import { getInitials } from '../../utils/date';
+import type { UserProfile } from '../../models';
 
 export default function ChildSettingsScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const { user } = useAuth();
+  const params = useLocalSearchParams<{ editProfile?: string }>();
+  const { user, role } = useAuth();
   const { parents } = useRelationships();
   const { preferences, update, saveError, retrySave } = usePreferences();
 
+  const [profile, setProfile] = React.useState<UserProfile | null>(null);
+  const [profileModalVisible, setProfileModalVisible] = React.useState(false);
   const [loggingOut, setLoggingOut] = React.useState(false);
 
   const [inviteVisible, setInviteVisible] = React.useState(false);
   const [inviteCode, setInviteCode] = React.useState<string | null>(null);
   const [inviteError, setInviteError] = React.useState<string | null>(null);
   const [inviting, setInviting] = React.useState(false);
+
+  React.useEffect(() => {
+    if (params.editProfile === 'true') {
+      setProfileModalVisible(true);
+    }
+  }, [params.editProfile]);
+
+  React.useEffect(() => {
+    if (!user) return;
+    let mounted = true;
+    getUserProfile(user.uid)
+      .then((p) => {
+        if (mounted && p) {
+          setProfile(p);
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load caregiver profile:', err);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
 
   const generateInvitation = async (childUid: string) => {
     setInviting(true);
@@ -71,28 +100,21 @@ export default function ChildSettingsScreen() {
     setLoggingOut(true);
     try {
       await logOut();
-      router.replace('/');
+      router.replace('/login');
     } catch {
       setLoggingOut(false);
       Alert.alert('Log Out Failed', 'Please try again.');
     }
   };
 
-  const childProfile = {
-    name: user?.displayName ?? 'My Account',
-    roleLabel: 'Child Account',
-    avatarSource: undefined as any,
-  };
+  const displayName = profile?.name || user?.displayName || 'My Account';
+  const roleLabel = role === 'child' ? 'Caregiver Account' : 'Parent Account';
 
   const parentEntries = parents.map((p) => ({
     id: p.relationship.id,
     name: p.profile?.name ?? 'Parent',
     lastActive: 'Connected',
   }));
-
-  const handleEditProfile = () => {
-    router.push('/(tabs)/four');
-  };
 
   const handleReminderSounds = () => {
     Alert.alert('Reminder Sounds', 'Notification sound is set by your device.');
@@ -122,16 +144,19 @@ export default function ChildSettingsScreen() {
             style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.9 : 1 }]}>
             <Ionicons name="arrow-back" size={18} color={childSettingsColors.text} />
           </Pressable>
-          <Text style={styles.headerTitle}>Settings</Text>
+          <Text style={styles.headerTitle}>Profile</Text>
           <View style={styles.headerSpacer} />
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <ChildProfileCard
-            name={childProfile.name}
-            roleLabel={childProfile.roleLabel}
-            avatarSource={childProfile.avatarSource}
-            onEditProfile={handleEditProfile}
+            name={displayName}
+            email={profile?.email || user?.email || undefined}
+            phone={profile?.phone}
+            roleLabel={roleLabel}
+            photoUrl={profile?.photoUrl}
+            onEditProfile={() => setProfileModalVisible(true)}
+            onEditPhoto={() => setProfileModalVisible(true)}
           />
 
           <MyParentsSection parents={parentEntries} onAddParent={handleAddParent} />
@@ -205,6 +230,29 @@ export default function ChildSettingsScreen() {
         }}
         onClose={() => setInviteVisible(false)}
       />
+
+      {user ? (
+        <ChildProfileModal
+          visible={profileModalVisible}
+          userUid={user.uid}
+          initialName={profile?.name ?? user.displayName ?? ''}
+          initialPhone={profile?.phone ?? ''}
+          initialPhotoUrl={profile?.photoUrl}
+          onClose={() => setProfileModalVisible(false)}
+          onSaved={(newName, newPhone, newPhotoUrl) => {
+            setProfile((p) =>
+              p
+                ? {
+                    ...p,
+                    name: newName,
+                    phone: newPhone,
+                    ...(newPhotoUrl !== undefined ? { photoUrl: newPhotoUrl } : {}),
+                  }
+                : p
+            );
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -261,21 +309,4 @@ const styles = StyleSheet.create({
   },
   version: { color: childSettingsColors.textSecondary, fontSize: 11, fontWeight: '700' },
   love: { color: childSettingsColors.textMuted, fontSize: 11, fontWeight: '600' },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: childSettingsColors.accentSoft,
-    borderColor: childSettingsColors.accentBorder,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-  },
-  errorText: {
-    color: childSettingsColors.accent,
-    fontSize: 13,
-    fontWeight: '700',
-    flex: 1,
-  },
 });

@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useRouter } from 'expo-router';
 import * as React from 'react';
 import {
   Alert,
@@ -11,6 +12,10 @@ import {
 } from 'react-native';
 import * as Linking from 'expo-linking';
 import Colors from '@/src/assets/Colors';
+import { useAuth } from '../context/AuthContext';
+import { cleanPhoneNumber } from '../utils/phone';
+
+export { cleanPhoneNumber };
 
 export type CallConfirmationModalProps = {
   visible: boolean;
@@ -18,10 +23,8 @@ export type CallConfirmationModalProps = {
   relationshipLabel?: string;
   phoneNumber?: string | null;
   onClose: () => void;
+  onNavigateToProfile?: () => void;
 };
-
-import { cleanPhoneNumber } from '../utils/phone';
-export { cleanPhoneNumber };
 
 export default function CallConfirmationModal({
   visible,
@@ -29,7 +32,10 @@ export default function CallConfirmationModal({
   relationshipLabel = 'Caregiver',
   phoneNumber,
   onClose,
+  onNavigateToProfile,
 }: CallConfirmationModalProps) {
+  const router = useRouter();
+  const { role } = useAuth();
   const [calling, setCalling] = React.useState(false);
 
   const cleanedPhone = React.useMemo(() => cleanPhoneNumber(phoneNumber), [phoneNumber]);
@@ -59,12 +65,25 @@ export default function CallConfirmationModal({
           [{ text: 'OK' }]
         );
       }
-    } catch (err) {
+    } catch {
       Alert.alert('Call Failed', 'Unable to initiate phone call. Please check your phone app.');
     } finally {
       setCalling(false);
       onClose();
     }
+  };
+
+  const handleGoToProfile = () => {
+    onClose();
+    if (onNavigateToProfile) {
+      onNavigateToProfile();
+      return;
+    }
+    const targetRoute = role === 'parent' ? '/(parent-tabs)/settings' : '/(tabs)/settings';
+    router.push({
+      pathname: targetRoute,
+      params: { editProfile: 'true' },
+    });
   };
 
   return (
@@ -96,9 +115,21 @@ export default function CallConfirmationModal({
           </Text>
 
           {!hasValidPhone ? (
-            <View style={styles.warningBox}>
-              <Ionicons name="alert-circle-outline" size={16} color={Colors.dashboard.danger} />
-              <Text style={styles.warningText}>No phone number is registered for this contact.</Text>
+            <View style={styles.warningWrap}>
+              <View style={styles.warningBox}>
+                <Ionicons name="alert-circle-outline" size={16} color={Colors.dashboard.danger} />
+                <Text style={styles.warningText}>No phone number is registered for this contact.</Text>
+              </View>
+
+              <Pressable
+                onPress={handleGoToProfile}
+                accessibilityRole="button"
+                accessibilityLabel="Go to Profile to add phone number"
+                style={({ pressed }) => [styles.profileLinkBtn, { opacity: pressed ? 0.75 : 1 }]}>
+                <Ionicons name="person-circle-outline" size={17} color={Colors.dashboard.accent} />
+                <Text style={styles.profileLinkText}>Update phone number in Profile</Text>
+                <Ionicons name="arrow-forward" size={14} color={Colors.dashboard.accent} />
+              </Pressable>
             </View>
           ) : (
             <Text style={styles.note}>
@@ -124,10 +155,16 @@ export default function CallConfirmationModal({
               style={({ pressed }) => [
                 styles.callBtn,
                 (!hasValidPhone || calling) && styles.callBtnDisabled,
-                { opacity: pressed ? 0.85 : 1 },
+                { opacity: pressed && hasValidPhone ? 0.85 : 1 },
               ]}>
-              <Ionicons name="call" size={18} color={Colors.dashboard.bg} />
-              <Text style={styles.callText}>{calling ? 'Opening...' : 'Call Now'}</Text>
+              <Ionicons
+                name="call"
+                size={18}
+                color={!hasValidPhone ? Colors.alpha.white25 : Colors.dashboard.bg}
+              />
+              <Text style={[styles.callText, !hasValidPhone && styles.callTextDisabled]}>
+                {calling ? 'Opening...' : 'Call Now'}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -185,6 +222,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
+  warningWrap: {
+    width: '100%',
+    gap: 10,
+    alignItems: 'center',
+  },
   warningBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -201,6 +243,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     flex: 1,
+  },
+  profileLinkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: Colors.dashboard.accentSoftBg,
+    borderWidth: 1,
+    borderColor: Colors.dashboard.accentSoftBorder,
+    width: '100%',
+  },
+  profileLinkText: {
+    color: Colors.dashboard.accent,
+    fontSize: 13,
+    fontWeight: '800',
   },
   actions: {
     flexDirection: 'row',
@@ -234,11 +294,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   callBtnDisabled: {
-    opacity: 0.4,
+    backgroundColor: Colors.dashboard.surface,
+    borderWidth: 1,
+    borderColor: Colors.alpha.white08,
   },
   callText: {
     color: Colors.dashboard.bg,
     fontSize: 15,
     fontWeight: '900',
+  },
+  callTextDisabled: {
+    color: Colors.alpha.white30,
   },
 });

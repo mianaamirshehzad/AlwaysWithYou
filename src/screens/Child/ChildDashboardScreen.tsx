@@ -30,7 +30,7 @@ import ErrorBanner from '../../components/ErrorBanner';
 export default function ChildDashboardScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const { parents } = useRelationships();
+  const { parents, loading: relationshipsLoading } = useRelationships();
   const { selectedParent, setSelectedParentId } = useSelectedParent();
 
   const [timelineTab, setTimelineTab] = React.useState<'today' | 'history'>('today');
@@ -193,12 +193,20 @@ export default function ChildDashboardScreen() {
             </View>
             <View style={styles.parentChipTextCol}>
               <Text style={styles.parentKicker}>CARING FOR</Text>
-              <Text style={styles.parentName}>{selectedParent?.profile?.name ?? 'No parent connected'}</Text>
+              <Text style={styles.parentName}>
+                {selectedParent?.profile?.name ??
+                  (relationshipsLoading ? 'Loading parent...' : 'No parent connected')}
+              </Text>
             </View>
             <Ionicons name="chevron-down" size={18} color={Colors.alpha.white60} />
           </Pressable>
 
-          {!relationshipId ? (
+          {relationshipsLoading && !selectedParent ? (
+            <View style={styles.dashboardLoadingWrap}>
+              <ActivityIndicator size="large" color={Colors.dashboard.accent} />
+              <Text style={styles.dashboardLoadingText}>Loading care dashboard...</Text>
+            </View>
+          ) : !relationshipId ? (
             <Pressable
               onPress={() => router.push('/(tabs)/settings')}
               accessibilityRole="button"
@@ -207,7 +215,7 @@ export default function ChildDashboardScreen() {
               <Ionicons name="people-outline" size={40} color={Colors.alpha.white30} />
               <Text style={styles.emptyTitle}>No parent connected yet</Text>
               <Text style={styles.emptyText}>
-                Tap here or go to Settings to invite your parent with a 6-digit code.
+                Tap here or go to Profile to invite your parent with a 6-digit code.
               </Text>
             </Pressable>
           ) : (
@@ -251,7 +259,7 @@ export default function ChildDashboardScreen() {
           <FloatingActionButton
             onPress={() => setCreateReminderOpen(true)}
             accessibilityLabel="Create reminder"
-            style={{ marginBottom: -100 }}
+            style={{ marginBottom: -60 }}
           />
         ) : null}
 
@@ -490,4 +498,15 @@ const styles = StyleSheet.create({
   },
   segmentText: { color: Colors.dashboard.tabInactive, fontSize: 11, fontWeight: '900' },
   segmentTextOn: { color: Colors.dashboard.text },
+  dashboardLoadingWrap: {
+    paddingVertical: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  dashboardLoadingText: {
+    color: Colors.alpha.white45,
+    fontSize: 13,
+    fontWeight: '700',
+  },
 });

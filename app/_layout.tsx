@@ -10,6 +10,7 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/src/assets/Colors';
+import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
 import { RelationshipsProvider, useRelationships } from '../src/context/RelationshipsContext';
 import { PreferencesProvider } from '../src/context/PreferencesContext';
@@ -57,6 +58,7 @@ function RootLayoutNav() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <StatusBar style="light" translucent backgroundColor="transparent" />
       <AuthProvider>
         <PreferencesProvider>
           <RelationshipsProvider>
@@ -69,7 +71,7 @@ function RootLayoutNav() {
 }
 
 function RootNavigator() {
-  const { status, role, roleError, retryLoadRole } = useAuth();
+  const { status, role, roleError, retryLoadRole, hasConnected } = useAuth();
   const { relationships, loading: relationshipsLoading } = useRelationships();
   const router = useRouter();
   const segments = useSegments();
@@ -84,8 +86,14 @@ function RootNavigator() {
     }
 
     if (status === 'unauthenticated') {
-      if (segments[0] === '(tabs)' || segments[0] === '(parent-tabs)') {
-        router.replace('/');
+      if (hasConnected) {
+        if (segments[0] !== 'login' && segments[0] !== 'signup') {
+          router.replace('/login');
+        }
+      } else {
+        if (segments[0] === '(tabs)' || segments[0] === '(parent-tabs)') {
+          router.replace('/');
+        }
       }
       return;
     }
@@ -150,6 +158,7 @@ function AuthGateLoading() {
 }
 
 function AuthGateError(props: { onRetry: () => void }) {
+  const router = useRouter();
   return (
     <View style={styles.gate}>
       <Text style={styles.gateTitle}>We couldn&apos;t load your account details.</Text>
@@ -161,8 +170,9 @@ function AuthGateError(props: { onRetry: () => void }) {
         <Text style={styles.gateRetryText}>Retry</Text>
       </Pressable>
       <Pressable
-        onPress={() => {
-          void logOut();
+        onPress={async () => {
+          await logOut();
+          router.replace('/login');
         }}
         accessibilityRole="button"
         accessibilityLabel="Sign Out"

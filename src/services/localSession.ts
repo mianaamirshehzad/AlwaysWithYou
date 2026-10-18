@@ -1,10 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Relationship, UserRole } from '../models';
+import type { Relationship, UserProfile, UserRole } from '../models';
+
+export type ParentProfile = {
+  relationship: Relationship;
+  profile: UserProfile | null;
+};
 
 export const STORAGE_KEYS = {
   HAS_CONNECTED: '@alwayswithyou:has_connected',
   USER_SESSION: '@alwayswithyou:user_session',
   RELATIONSHIPS_CACHE: '@alwayswithyou:relationships_cache',
+  PARENTS_CACHE: '@alwayswithyou:parents_cache',
 } as const;
 
 export type SavedUserSession = {
@@ -76,6 +82,7 @@ export async function clearLocalSession(): Promise<void> {
   try {
     await AsyncStorage.removeItem(STORAGE_KEYS.USER_SESSION);
     await AsyncStorage.removeItem(STORAGE_KEYS.RELATIONSHIPS_CACHE);
+    await AsyncStorage.removeItem(STORAGE_KEYS.PARENTS_CACHE);
   } catch (error) {
     console.warn('Failed to clear local user session:', error);
   }
@@ -87,7 +94,6 @@ export async function clearLocalSession(): Promise<void> {
 export async function saveCachedRelationships(relationships: Relationship[]): Promise<void> {
   try {
     await AsyncStorage.setItem(STORAGE_KEYS.RELATIONSHIPS_CACHE, JSON.stringify(relationships));
-    // If any relationship is active, automatically ensure HAS_CONNECTED is marked
     if (relationships.some((r) => r.status === 'active')) {
       await saveConnectionEstablished(true);
     }
@@ -110,15 +116,38 @@ export async function getCachedRelationships(): Promise<Relationship[]> {
 }
 
 /**
- * Drops the cached relationships for the signed-out account. Called on logout
- * and on any account change so the next authenticated user never inherits the
- * previous user's private care connections from local storage.
+ * Caches loaded parent profiles so the Child Dashboard can immediately display
+ * the active parent without flickering to "no parent selected" on app boot.
+ */
+export async function saveCachedParents(parents: ParentProfile[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEYS.PARENTS_CACHE, JSON.stringify(parents));
+  } catch (error) {
+    console.warn('Failed to cache parents locally:', error);
+  }
+}
+
+/**
+ * Retrieves cached parent profiles from local storage.
+ */
+export async function getCachedParents(): Promise<ParentProfile[]> {
+  try {
+    const json = await AsyncStorage.getItem(STORAGE_KEYS.PARENTS_CACHE);
+    if (!json) return [];
+    return JSON.parse(json) as ParentProfile[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Drops the cached relationships and parents for the signed-out account.
  */
 export async function clearCachedRelationships(): Promise<void> {
   try {
     await AsyncStorage.removeItem(STORAGE_KEYS.RELATIONSHIPS_CACHE);
+    await AsyncStorage.removeItem(STORAGE_KEYS.PARENTS_CACHE);
   } catch (error) {
     console.warn('Failed to clear cached relationships:', error);
   }
 }
-

@@ -1,7 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation, useRouter } from 'expo-router';
 import * as React from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,15 +19,21 @@ import ErrorBanner from '@/src/components/ErrorBanner';
 import SuccessFeedback from '@/src/components/SuccessFeedback';
 import { useAuth } from '@/src/context/AuthContext';
 import { getUserProfile, updateUserProfile } from '@/src/services/firestore/users';
+import { pickProfileImageFromGallery } from '@/src/services/imagePicker';
 import { getInitials } from '@/src/utils/date';
 import { validateDisplayName, validatePhoneNumber } from '@/src/utils/validation';
 import type { UserProfile } from '@/src/models';
 
 export default function ChildProfileScreen() {
+  const router = useRouter();
+  const navigation = useNavigation();
   const { user, role } = useAuth();
+
   const [profile, setProfile] = React.useState<UserProfile | null>(null);
   const [name, setName] = React.useState('');
   const [phone, setPhone] = React.useState('');
+  const [photoUrl, setPhotoUrl] = React.useState<string | undefined>(undefined);
+  const [pickingImage, setPickingImage] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
@@ -39,9 +48,28 @@ export default function ChildProfileScreen() {
         setProfile(p);
         setName(p.name ?? '');
         setPhone(p.phone ?? '');
+        setPhotoUrl(p.photoUrl);
       }
     });
   }, [user]);
+
+  const handlePickImage = async () => {
+    try {
+      setPickingImage(true);
+      setErrorMessage(null);
+      const pickedUri = await pickProfileImageFromGallery();
+      if (pickedUri && user) {
+        setPhotoUrl(pickedUri);
+        await updateUserProfile(user.uid, { photoUrl: pickedUri });
+        setProfile((p) => (p ? { ...p, photoUrl: pickedUri } : p));
+        setSuccessMessage('Profile picture updated successfully');
+      }
+    } catch (err: any) {
+      Alert.alert('Permission Needed', err?.message ?? 'Could not open image gallery.');
+    } finally {
+      setPickingImage(false);
+    }
+  };
 
   const handleStartEdit = () => {
     setNameError(null);
@@ -83,10 +111,11 @@ export default function ChildProfileScreen() {
       await updateUserProfile(user.uid, {
         name: nameVal.value,
         phone: phoneVal.value,
+        ...(photoUrl !== undefined ? { photoUrl } : {}),
       });
 
       setProfile((p) =>
-        p ? { ...p, name: nameVal.value, phone: phoneVal.value } : p
+        p ? { ...p, name: nameVal.value, phone: phoneVal.value, photoUrl } : p
       );
       setEditing(false);
       setSuccessMessage('Profile updated successfully');
@@ -97,18 +126,63 @@ export default function ChildProfileScreen() {
     }
   };
 
+  const handleBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      router.replace('/(tabs)/settings');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <Text style={styles.title}>My Profile</Text>
-        <Text style={styles.subtitle}>{role === 'child' ? 'Caregiver account' : 'Parent account'}</Text>
+        <Pressable
+          onPress={handleBack}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          hitSlop={12}
+          style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.85 : 1 }]}>
+          <Ionicons name="arrow-back" size={20} color={Colors.dashboard.text} />
+        </Pressable>
+        <View style={styles.headerTitleWrap}>
+          <Text style={styles.title}>My Profile</Text>
+          <Text style={styles.subtitle}>{role === 'child' ? 'Caregiver account' : 'Parent account'}</Text>
+        </View>
+        <View style={{ width: 40 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.avatarWrap}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{getInitials(profile?.name ?? 'You')}</Text>
+            {photoUrl ? (
+              <Image source={{ uri: photoUrl }} style={styles.avatarImg} />
+            ) : (
+              <Text style={styles.avatarText}>{getInitials(profile?.name ?? 'You')}</Text>
+            )}
+            <Pressable
+              onPress={handlePickImage}
+              disabled={pickingImage}
+              accessibilityRole="button"
+              accessibilityLabel="Change profile photo"
+              style={({ pressed }) => [styles.avatarBadge, { opacity: pressed ? 0.85 : 1 }]}>
+              {pickingImage ? (
+                <ActivityIndicator size="small" color={Colors.dashboard.bg} />
+              ) : (
+                <Ionicons name="camera" size={16} color={Colors.dashboard.bg} />
+              )}
+            </Pressable>
           </View>
+          <Pressable
+            onPress={handlePickImage}
+            disabled={pickingImage}
+            accessibilityRole="button"
+            accessibilityLabel="Change photo from gallery"
+            style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}>
+            <Text style={styles.changePhotoText}>
+              {pickingImage ? 'Opening Gallery...' : 'Change Photo from Gallery'}
+            </Text>
+          </Pressable>
         </View>
 
         {errorMessage ? (
@@ -231,22 +305,64 @@ function Field(props: { label: string; children: React.ReactNode }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.dashboard.bg },
-  header: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 8, gap: 2 },
-  title: { color: Colors.dashboard.text, fontSize: 22, fontWeight: '900' },
-  subtitle: { color: Colors.alpha.white45, fontSize: 13, fontWeight: '800' },
+  header: {
+    paddingHorizontal: 18,
+    paddingTop: 8,
+    paddingBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerTitleWrap: { alignItems: 'center', gap: 2 },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.dashboard.surface,
+    borderWidth: 1,
+    borderColor: Colors.alpha.white08,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: { color: Colors.dashboard.text, fontSize: 20, fontWeight: '900' },
+  subtitle: { color: Colors.alpha.white45, fontSize: 12, fontWeight: '800' },
   content: { paddingHorizontal: 18, paddingBottom: 28, gap: 16 },
-  avatarWrap: { alignItems: 'center', paddingVertical: 12 },
+  avatarWrap: { alignItems: 'center', paddingVertical: 12, gap: 8 },
   avatar: {
-    width: 92,
-    height: 92,
-    borderRadius: 999,
+    position: 'relative',
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: Colors.dashboard.accentIconBg,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
     borderColor: Colors.dashboard.accentSoftBorder,
   },
-  avatarText: { color: Colors.dashboard.accent, fontWeight: '900', fontSize: 30 },
+  avatarImg: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+  },
+  avatarBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.dashboard.accent,
+    borderWidth: 2,
+    borderColor: Colors.dashboard.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { color: Colors.dashboard.accent, fontWeight: '900', fontSize: 32 },
+  changePhotoText: {
+    color: Colors.dashboard.accent,
+    fontSize: 13,
+    fontWeight: '800',
+  },
   card: {
     backgroundColor: Colors.dashboard.surface,
     borderWidth: 1,

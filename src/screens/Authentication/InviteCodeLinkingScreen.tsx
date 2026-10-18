@@ -119,7 +119,7 @@ function InviteCodeEntry(props: { value: string; onChange: (code: string) => voi
 export default function InviteCodeLinkingScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const { user, role } = useAuth();
+  const { user, role, setHasConnected } = useAuth();
   const { relationships, refresh } = useRelationships();
   const [tab, setTab] = React.useState<TabKey>('have');
   const [code, setCode] = React.useState('');
@@ -161,6 +161,7 @@ export default function InviteCodeLinkingScreen() {
     setErrorMessage(null);
     try {
       await consumeInvitation(normalized, user.uid);
+      await setHasConnected(true);
       await refresh();
       setSuccess(true);
       setTimeout(() => {
@@ -177,13 +178,13 @@ export default function InviteCodeLinkingScreen() {
   const handleBackOrSignOut = async () => {
     if (user && role === 'parent' && !isParentLinked) {
       await logOut();
-      router.replace('/');
+      router.replace('/login');
       return;
     }
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
-      router.replace('/');
+      router.replace(user ? '/login' : '/');
     }
   };
 
@@ -217,7 +218,7 @@ export default function InviteCodeLinkingScreen() {
             <Pressable
               onPress={async () => {
                 await logOut();
-                router.replace('/');
+                router.replace('/login');
               }}
               hitSlop={10}
               accessibilityRole="button"

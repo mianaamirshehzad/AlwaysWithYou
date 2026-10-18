@@ -23,10 +23,10 @@ export default function TabLayout() {
           backgroundColor: Colors.dashboard.bg,
           borderTopWidth: 0,
           elevation: 0,
-          height: Platform.select({ ios: 96, default: 72 }),
+          height: Platform.select({ ios: 96, android: 84, default: 72 }),
           paddingTop: 8,
-          paddingBottom: Platform.select({ ios: 30, default: 10 }),
-          marginBottom: Platform.select({ ios: 12, default: 0 }),
+          paddingBottom: Platform.select({ ios: 30, android: 20, default: 10 }),
+          marginBottom: Platform.select({ ios: 12, android: 16, default: 0 }),
         },
         tabBarLabelStyle: {
           fontSize: 11,
@@ -61,15 +61,14 @@ export default function TabLayout() {
       <Tabs.Screen
         name="four"
         options={{
-          title: 'Profile',
-          tabBarIcon: ({ color }) => <TabBarIcon name="person-outline" color={color} />,
+          href: null,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Settings',
-          tabBarIcon: ({ color }) => <TabBarIcon name="settings-outline" color={color} />,
+          title: 'Profile',
+          tabBarIcon: ({ color }) => <TabBarIcon name="person-outline" color={color} />,
         }}
       />
     </Tabs>

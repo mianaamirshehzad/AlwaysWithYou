@@ -14,3 +14,14 @@ jest.mock('@expo/vector-icons/Ionicons', () => {
   const React = require('react');
   return (props) => React.createElement('Ionicons', props);
 });
+
+jest.mock('expo-image-picker', () => ({
+  requestMediaLibraryPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
+  launchImageLibraryAsync: jest.fn(async () => ({ canceled: true, assets: null })),
+  PermissionStatus: {
+    GRANTED: 'granted',
+    DENIED: 'denied',
+    UNDETERMINED: 'undetermined',
+  },
+}));
+

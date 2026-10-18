@@ -1,6 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as React from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -11,9 +14,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
+
 import Colors from '@/src/assets/Colors';
+import Images from '@/src/assets/Images';
 import ErrorBanner from '../ErrorBanner';
 import { updateUserProfile } from '@/src/services/firestore/users';
+import { pickProfileImageFromGallery } from '@/src/services/imagePicker';
 import { validateDisplayName, validatePhoneNumber } from '@/src/utils/validation';
 
 export type ParentProfileModalProps = {
@@ -21,8 +27,9 @@ export type ParentProfileModalProps = {
   parentUid: string;
   initialName?: string;
   initialPhone?: string;
+  initialPhotoUrl?: string;
   onClose: () => void;
-  onSaved: (newName: string, newPhone: string) => void;
+  onSaved: (newName: string, newPhone: string, newPhotoUrl?: string) => void;
 };
 
 export default function ParentProfileModal({
@@ -30,11 +37,14 @@ export default function ParentProfileModal({
   parentUid,
   initialName = '',
   initialPhone = '',
+  initialPhotoUrl,
   onClose,
   onSaved,
 }: ParentProfileModalProps) {
   const [name, setName] = React.useState(initialName);
   const [phone, setPhone] = React.useState(initialPhone);
+  const [photoUrl, setPhotoUrl] = React.useState<string | undefined>(initialPhotoUrl);
+  const [pickingImage, setPickingImage] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [nameError, setNameError] = React.useState<string | null>(null);
@@ -44,11 +54,27 @@ export default function ParentProfileModal({
     if (visible) {
       setName(initialName);
       setPhone(initialPhone);
+      setPhotoUrl(initialPhotoUrl);
       setErrorMessage(null);
       setNameError(null);
       setPhoneError(null);
     }
-  }, [visible, initialName, initialPhone]);
+  }, [visible, initialName, initialPhone, initialPhotoUrl]);
+
+  const handlePickImage = async () => {
+    try {
+      setPickingImage(true);
+      setErrorMessage(null);
+      const pickedUri = await pickProfileImageFromGallery();
+      if (pickedUri) {
+        setPhotoUrl(pickedUri);
+      }
+    } catch (err: any) {
+      Alert.alert('Permission Needed', err?.message ?? 'Could not open image gallery.');
+    } finally {
+      setPickingImage(false);
+    }
+  };
 
   const handleSave = async () => {
     const nameVal = validateDisplayName(name);
@@ -68,9 +94,10 @@ export default function ParentProfileModal({
       await updateUserProfile(parentUid, {
         name: nameVal.value,
         phone: phoneVal.value,
+        ...(photoUrl !== undefined ? { photoUrl } : {}),
       });
 
-      onSaved(nameVal.value, phoneVal.value);
+      onSaved(nameVal.value, phoneVal.value, photoUrl);
       onClose();
     } catch (err: any) {
       setErrorMessage(err?.message ?? 'Could not update profile. Please try again.');
@@ -89,29 +116,33 @@ export default function ParentProfileModal({
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.overlay}>
-        <Pressable
-          style={styles.backdrop}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss profile modal"
-        />
+        {/* Solid backdrop prevents background screen content from bleeding through and ignores outside touches */}
+        <View style={styles.backdrop} pointerEvents="auto" />
 
         <View style={styles.sheet} accessibilityRole="alert" accessibilityLabel="Edit Parent Profile">
           <View style={styles.handle} />
 
           <View style={styles.header}>
+            <Pressable
+              onPress={onClose}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              style={styles.navBtn}>
+              <Ionicons name="arrow-back" size={20} color={Colors.alpha.white85} />
+            </Pressable>
             <Text style={styles.title}>Edit Profile</Text>
             <Pressable
               onPress={onClose}
-              hitSlop={10}
+              hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel="Close"
-              style={styles.closeBtn}>
+              style={styles.navBtn}>
               <Ionicons name="close" size={20} color={Colors.alpha.white70} />
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             {errorMessage ? (
               <ErrorBanner
                 message={errorMessage}
@@ -119,6 +150,39 @@ export default function ParentProfileModal({
                 onDismiss={() => setErrorMessage(null)}
               />
             ) : null}
+
+            {/* Profile Photo Picker */}
+            <View style={styles.avatarSection}>
+              <View style={styles.avatarWrap}>
+                {photoUrl ? (
+                  <Image source={{ uri: photoUrl }} style={styles.avatarImg} />
+                ) : (
+                  <Image source={Images.hands} style={styles.avatarImg} />
+                )}
+                <Pressable
+                  onPress={handlePickImage}
+                  disabled={pickingImage}
+                  accessibilityRole="button"
+                  accessibilityLabel="Choose photo from gallery"
+                  style={({ pressed }) => [styles.avatarBadge, { opacity: pressed ? 0.85 : 1 }]}>
+                  {pickingImage ? (
+                    <ActivityIndicator size="small" color={Colors.dashboard.bg} />
+                  ) : (
+                    <Ionicons name="camera" size={16} color={Colors.dashboard.bg} />
+                  )}
+                </Pressable>
+              </View>
+              <Pressable
+                onPress={handlePickImage}
+                disabled={pickingImage}
+                accessibilityRole="button"
+                accessibilityLabel="Change profile photo"
+                style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}>
+                <Text style={styles.changePhotoText}>
+                  {pickingImage ? 'Opening Gallery...' : 'Change Photo from Gallery'}
+                </Text>
+              </Pressable>
+            </View>
 
             <View style={styles.field}>
               <Text style={styles.label}>Your Name</Text>
@@ -187,11 +251,12 @@ export default function ParentProfileModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: Colors.dashboard.bg,
     justifyContent: 'flex-end',
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.dashboard.bg,
   },
   sheet: {
     backgroundColor: Colors.dashboard.surfaceStrong,
@@ -200,9 +265,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.dashboard.border,
     paddingHorizontal: 20,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 28,
     paddingTop: 12,
-    maxHeight: '85%',
+    maxHeight: '92%',
   },
   handle: {
     width: 36,
@@ -220,18 +285,58 @@ const styles = StyleSheet.create({
   },
   title: {
     color: Colors.dashboard.text,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '900',
   },
-  closeBtn: {
-    minWidth: 44,
-    minHeight: 44,
+  navBtn: {
+    minWidth: 40,
+    minHeight: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.dashboard.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   content: {
     gap: 18,
-    paddingBottom: 12,
+    paddingBottom: 16,
+  },
+  avatarSection: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  avatarWrap: {
+    position: 'relative',
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 2,
+    borderColor: Colors.dashboard.accentSoftBorder,
+    overflow: 'visible',
+  },
+  avatarImg: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+  },
+  avatarBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.dashboard.accent,
+    borderWidth: 2,
+    borderColor: Colors.dashboard.surfaceStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  changePhotoText: {
+    color: Colors.dashboard.accent,
+    fontSize: 13,
+    fontWeight: '800',
   },
   field: {
     gap: 6,
@@ -301,4 +406,3 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
 });
-
