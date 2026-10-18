@@ -8,6 +8,8 @@ import {
   clearLocalSession,
   saveCachedRelationships,
   getCachedRelationships,
+  saveCachedParents,
+  getCachedParents,
   clearCachedRelationships,
   type SavedUserSession,
 } from '../services/localSession';
@@ -102,6 +104,36 @@ describe('Local Session and Profile Features', () => {
 
       await clearCachedRelationships();
       expect(await getCachedRelationships()).toEqual([]);
+    });
+
+    it('caches and clears parent profiles to prevent dashboard flicker', async () => {
+      const mockParents = [
+        {
+          relationship: {
+            id: 'rel-1',
+            childId: 'child-1',
+            parentId: 'parent-1',
+            status: 'active' as const,
+            createdAt: { seconds: 123456, nanoseconds: 0 } as any,
+            updatedAt: { seconds: 123456, nanoseconds: 0 } as any,
+          },
+          profile: {
+            uid: 'parent-1',
+            name: 'Dad',
+            email: 'dad@example.com',
+            role: 'parent' as const,
+            createdAt: { seconds: 123456, nanoseconds: 0 } as any,
+          },
+        },
+      ];
+
+      await saveCachedParents(mockParents);
+      const cached = await getCachedParents();
+      expect(cached).toHaveLength(1);
+      expect(cached[0].profile?.name).toBe('Dad');
+
+      await clearCachedRelationships();
+      expect(await getCachedParents()).toEqual([]);
     });
   });
 
