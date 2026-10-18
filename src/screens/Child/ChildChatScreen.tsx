@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -109,7 +110,7 @@ export default function ChatScreen() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}>
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
         <View style={styles.header}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{getInitials(parentName)}</Text>
@@ -121,30 +122,44 @@ export default function ChatScreen() {
         </View>
 
         {loading ? (
-          <ActivityIndicator size="large" color={Colors.dashboard.accent} style={{ marginTop: 60 }} />
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.dashboard.accent} />
+          </View>
         ) : !relationshipId ? (
-          <View style={styles.emptyContainer}>
+          <Pressable style={styles.emptyContainer} onPress={Keyboard.dismiss}>
             <EmptyState
+              compact
               iconName="chatbubbles-outline"
               title="No Conversation Yet"
               description="Connect with a parent to start chatting."
             />
-          </View>
-        ) : messages.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <EmptyState
-              iconName="chatbubble-ellipses-outline"
-              title="Say Hello!"
-              description={`Send your first message to ${parentName}.`}
-            />
-          </View>
+          </Pressable>
         ) : (
           <FlatList
             ref={listRef}
             data={messages}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContent}
-            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+            contentContainerStyle={[
+              styles.listContent,
+              messages.length === 0 && styles.listContentEmpty,
+            ]}
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={
+              <Pressable style={styles.emptyPressable} onPress={Keyboard.dismiss}>
+                <EmptyState
+                  compact
+                  iconName="chatbubble-ellipses-outline"
+                  title="Say Hello!"
+                  description={`Send your first message to ${parentName}.`}
+                />
+              </Pressable>
+            }
+            onContentSizeChange={() => {
+              if (messages.length > 0) {
+                listRef.current?.scrollToEnd({ animated: true });
+              }
+            }}
             renderItem={({ item }) => {
               const mine = item.senderId === user?.uid;
               const isAudio = item.messageType === 'audio';
@@ -225,22 +240,23 @@ export default function ChatScreen() {
               setText(val);
               if (sendError && !failedText) setSendError(null);
             }}
-            placeholder={`Message ${parentName}...`}
+            placeholder={relationshipId ? `Message ${parentName}...` : 'Connect with a parent to chat'}
             placeholderTextColor={Colors.alpha.white28}
             style={styles.input}
             multiline
             maxLength={500}
+            editable={Boolean(relationshipId)}
             accessibilityLabel="Message Input"
           />
 
           <Pressable
             onPress={() => handleSend()}
-            disabled={!text.trim() || sending}
+            disabled={!text.trim() || sending || !relationshipId}
             accessibilityRole="button"
             accessibilityLabel="Send message"
             style={({ pressed }) => [
               styles.sendBtn,
-              (!text.trim() || sending) && styles.sendBtnDisabled,
+              (!text.trim() || sending || !relationshipId) && styles.sendBtnDisabled,
               { opacity: pressed ? 0.85 : 1 },
             ]}>
             <Ionicons name="send" size={18} color={Colors.dashboard.bg} />
@@ -284,13 +300,28 @@ const styles = StyleSheet.create({
   headerTextCol: { flex: 1 },
   headerName: { color: Colors.dashboard.text, fontSize: 16, fontWeight: '900' },
   headerSub: { color: Colors.alpha.white40, fontSize: 11, fontWeight: '800' },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
+  emptyPressable: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
   listContent: { padding: 18, gap: 8, flexGrow: 1 },
+  listContentEmpty: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   bubbleRow: { width: '100%' },
   bubbleRowMine: { alignItems: 'flex-end' },
   bubbleRowTheirs: { alignItems: 'flex-start' },

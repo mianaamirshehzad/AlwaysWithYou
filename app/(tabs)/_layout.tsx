@@ -25,6 +25,7 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
+        tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: Colors.dashboard.accent,
         tabBarInactiveTintColor: Colors.dashboard.tabInactive,
         tabBarStyle: {
@@ -64,6 +65,7 @@ export default function TabLayout() {
         name="three"
         options={{
           title: 'Chat',
+          tabBarHideOnKeyboard: true,
           tabBarIcon: ({ color }) => <TabBarIcon name="chatbubble-ellipses-outline" color={color} />,
         }}
       />

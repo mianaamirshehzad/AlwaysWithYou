@@ -24,6 +24,7 @@ export default function ParentTabLayout() {
   return (
     <Tabs
       screenOptions={{
+        tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: Colors.dashboard.accent,
         tabBarInactiveTintColor: Colors.dashboard.tabInactive,
         tabBarStyle: {
@@ -56,6 +57,7 @@ export default function ParentTabLayout() {
         name="chat"
         options={{
           title: 'Chat',
+          tabBarHideOnKeyboard: true,
           tabBarIcon: ({ color }) => <TabBarIcon name="chatbubble-ellipses-outline" color={color} />,
         }}
       />
