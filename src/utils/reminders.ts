@@ -1,4 +1,5 @@
 import type { TaskType } from '@/src/models';
+import Images from '@/src/assets/Images';
 
 /**
  * Extracts a friendly first name greeting for a parent if available.
@@ -46,5 +47,52 @@ export function isReadyMadeNote(note: string, parentName?: string): boolean {
   if (!note || !note.trim()) return false;
   const types: TaskType[] = ['medicine', 'water', 'walk', 'exercise', 'call'];
   return types.some((t) => getReadyMadeNote(t, parentName) === note.trim());
+}
+
+/**
+ * Returns the matching image source for a given reminder type.
+ */
+export function getImageForTaskType(type?: string): any {
+  switch (type?.toLowerCase()) {
+    case 'medicine':
+      return Images.medicine;
+    case 'water':
+      return Images.water;
+    case 'walk':
+      return Images.walk;
+    case 'exercise':
+      return Images.exercise;
+    case 'call':
+      return Images.call;
+    case 'custom':
+      return Images.custom;
+    case 'rest':
+      return Images.rest;
+    case 'lunch':
+      return Images.lunch;
+    default:
+      return Images.custom;
+  }
+}
+
+/**
+ * Returns the matching icon name for a given reminder type.
+ */
+export function getIconForTaskType(type?: string): any {
+  switch (type?.toLowerCase()) {
+    case 'medicine':
+      return 'medical';
+    case 'water':
+      return 'water';
+    case 'walk':
+      return 'walk';
+    case 'exercise':
+      return 'fitness';
+    case 'call':
+      return 'call';
+    case 'custom':
+    default:
+      return 'sparkles';
+  }
 }
 

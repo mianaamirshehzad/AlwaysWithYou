@@ -260,6 +260,7 @@ export default function ParentDashboardScreen() {
             <>
               <Text style={styles.sectionKicker}>RIGHT NOW</Text>
               <ParentReminderCard
+                type={primaryPending.type}
                 title={primaryPending.title}
                 timeLabel={formatTime12h(primaryPending.scheduledTime)}
                 fromName={firstChildNameForCard}
@@ -343,10 +344,12 @@ export default function ParentDashboardScreen() {
           onClose={() => setNotifOpen(false)}
           fromName={firstChildNameForCard}
           note={primaryPending?.note}
+          type={primaryPending?.type}
           timeLabel={primaryPending ? formatTime12h(primaryPending.scheduledTime) : 'NOW'}
           title={primaryPending?.title ?? 'Care Reminder'}
           message={primaryPending?.note ? `"${primaryPending.note}"` : undefined}
-          imageSource={primaryPending ? (Images as any)[primaryPending.type] ?? Images.water : Images.water}
+          soundEnabled={preferences?.soundEnabled ?? true}
+          vibrateEnabled={preferences?.vibrateEnabled ?? false}
           snoozeMinutes={preferences?.snoozeMinutes ?? 15}
           onAcknowledge={() => {
             if (primaryPending) {

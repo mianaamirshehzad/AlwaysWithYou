@@ -21,15 +21,18 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export async function ensureNotificationChannel(): Promise<void> {
+export async function ensureNotificationChannel(prefs?: UserPreferences | null): Promise<void> {
   if (Platform.OS === 'android') {
     try {
+      const soundEnabled = prefs?.soundEnabled ?? true;
+      const vibrateEnabled = prefs?.vibrateEnabled ?? false;
       await Notifications.setNotificationChannelAsync('default', {
         name: 'Care Reminders',
         importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
+        enableVibrate: vibrateEnabled,
+        vibrationPattern: vibrateEnabled ? [0, 400, 200, 400] : undefined,
         lightColor: '#32D57B',
-        sound: 'default',
+        sound: soundEnabled ? 'default' : null,
       });
     } catch (e) {
       console.warn('Failed to configure Android notification channel:', e);
@@ -104,9 +107,10 @@ export async function scheduleNotificationForOccurrence(
     // Explicitly cancel any existing notification with this occurrence ID to prevent duplicates
     await cancelNotificationForOccurrence(occ.id);
 
-    await ensureNotificationChannel();
+    await ensureNotificationChannel(prefs);
 
     const soundEnabled = prefs?.soundEnabled ?? true;
+    const vibrateEnabled = prefs?.vibrateEnabled ?? false;
 
     const identifier = await Notifications.scheduleNotificationAsync({
       identifier: occ.id,
@@ -115,6 +119,7 @@ export async function scheduleNotificationForOccurrence(
         body: occ.note ? occ.note : 'Time for your care reminder.',
         data: { occurrenceId: occ.id, taskId: occ.taskId },
         sound: soundEnabled ? 'default' : undefined,
+        vibrate: vibrateEnabled ? [0, 400, 200, 400] : undefined,
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -167,8 +172,9 @@ export async function rescheduleNotificationForSnooze(
     const hasPermission = await getNotificationPermissionStatus();
     if (!hasPermission) return null;
 
-    await ensureNotificationChannel();
+    await ensureNotificationChannel(prefs);
     const soundEnabled = prefs?.soundEnabled ?? true;
+    const vibrateEnabled = prefs?.vibrateEnabled ?? false;
 
     return await Notifications.scheduleNotificationAsync({
       identifier: occ.id,
@@ -177,6 +183,7 @@ export async function rescheduleNotificationForSnooze(
         body: occ.note ? occ.note : 'Snoozed care reminder is due now.',
         data: { occurrenceId: occ.id, taskId: occ.taskId },
         sound: soundEnabled ? 'default' : undefined,
+        vibrate: vibrateEnabled ? [0, 400, 200, 400] : undefined,
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,

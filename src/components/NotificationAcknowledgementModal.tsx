@@ -1,47 +1,126 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as Notifications from 'expo-notifications';
 import * as React from 'react';
 import type { ImageSourcePropType } from 'react-native';
-import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Platform, Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import Colors from '@/src/assets/Colors';
 import Images from '@/src/assets/Images';
+import { usePreferences } from '@/src/context/PreferencesContext';
+import { getImageForTaskType, getIconForTaskType } from '@/src/utils/reminders';
+import type { TaskType } from '@/src/models';
 
 type Props = {
   visible: boolean;
   onClose: () => void;
   fromName?: string;
   note?: string;
+  type?: TaskType | string;
   timeLabel?: string;
   title?: string;
   message?: string;
   imageSource?: ImageSourcePropType;
   snoozeMinutes?: number;
+  soundEnabled?: boolean;
+  vibrateEnabled?: boolean;
   onAcknowledge?: () => void;
   onSnooze?: () => void;
 };
 
 export default function NotificationAcknowledgementModal(props: Props) {
+  const { preferences } = usePreferences();
+  const soundEnabled = props.soundEnabled ?? preferences?.soundEnabled ?? true;
+  const vibrateEnabled = props.vibrateEnabled ?? preferences?.vibrateEnabled ?? false;
+
   const fromName = props.fromName ?? 'Sarah';
-  const displayFrom =
-    props.note && props.note.trim() && !fromName.includes(props.note.trim())
-      ? `${fromName} - ${props.note.trim()}`
-      : fromName;
+  const displayFrom = fromName;
   const timeLabel = props.timeLabel ?? 'NOW';
-  const title = props.title ?? 'Drink Water';
+  const title = props.title ?? 'Care Reminder';
   const defaultMsg = props.note?.trim()
     ? `"${props.note.trim()}"`
     : '"Hi Dad, a gentle\nreminder to take care\nright now!"';
   const message = props.message ?? defaultMsg;
-  const imageSource = props.imageSource ?? Images.water;
   const snoozeMinutes = props.snoozeMinutes ?? 15;
 
+  const inferredType = React.useMemo(() => {
+    if (props.type) return props.type;
+    const t = (props.title ?? '').toLowerCase();
+    if (t.includes('med') || t.includes('pill')) return 'medicine';
+    if (t.includes('water') || t.includes('drink')) return 'water';
+    if (t.includes('walk')) return 'walk';
+    if (t.includes('exercise') || t.includes('fitness')) return 'exercise';
+    if (t.includes('call')) return 'call';
+    return 'custom';
+  }, [props.type, props.title]);
+
+  const imageSource = props.imageSource ?? getImageForTaskType(inferredType);
+  const iconName = getIconForTaskType(inferredType);
+
+  React.useEffect(() => {
+    if (!props.visible) {
+      try {
+        Vibration.cancel();
+      } catch {}
+      return;
+    }
+
+    // Trigger vibration based on parent's profile setting
+    if (vibrateEnabled) {
+      try {
+        Vibration.vibrate([0, 500, 250, 500]);
+      } catch (err) {
+        console.warn('Vibration error:', err);
+      }
+    }
+
+    // Trigger alert sound based on parent's profile setting
+    if (soundEnabled && Platform.OS !== 'web') {
+      Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body: defaultMsg,
+          sound: 'default',
+        },
+        trigger: null,
+      }).catch(() => {});
+    }
+
+    return () => {
+      try {
+        Vibration.cancel();
+      } catch {}
+    };
+  }, [props.visible, vibrateEnabled, soundEnabled, title, defaultMsg]);
+
+  const handleClose = () => {
+    try {
+      Vibration.cancel();
+    } catch {}
+    props.onClose();
+  };
+
+  const handleAcknowledge = () => {
+    try {
+      Vibration.cancel();
+    } catch {}
+    props.onAcknowledge?.();
+    props.onClose();
+  };
+
+  const handleSnooze = () => {
+    try {
+      Vibration.cancel();
+    } catch {}
+    props.onSnooze?.();
+  };
+
   return (
-    <Modal visible={props.visible} animationType="fade" presentationStyle="fullScreen" onRequestClose={props.onClose}>
+    <Modal visible={props.visible} animationType="fade" presentationStyle="fullScreen" onRequestClose={handleClose}>
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
         <View style={styles.topRow}>
           <Pressable
-            onPress={props.onClose}
+            onPress={handleClose}
             hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel="Close"
@@ -73,7 +152,7 @@ export default function NotificationAcknowledgementModal(props: Props) {
               <View style={styles.mediaOverlay} />
               <View style={styles.mediaOverlayBottom} />
               <View style={styles.dropCircle}>
-                <Ionicons name="water" size={26} color={Colors.dashboard.accent} />
+                <Ionicons name={iconName} size={26} color={Colors.dashboard.accent} />
               </View>
             </View>
 
@@ -86,10 +165,7 @@ export default function NotificationAcknowledgementModal(props: Props) {
 
         <View style={styles.bottom}>
           <Pressable
-            onPress={() => {
-              props.onAcknowledge?.();
-              props.onClose();
-            }}
+            onPress={handleAcknowledge}
             accessibilityRole="button"
             accessibilityLabel="Acknowledged"
             style={({ pressed }) => [styles.ackBtn, { opacity: pressed ? 0.92 : 1 }]}>
@@ -103,7 +179,7 @@ export default function NotificationAcknowledgementModal(props: Props) {
           </Pressable>
 
           <Pressable
-            onPress={() => props.onSnooze?.()}
+            onPress={handleSnooze}
             accessibilityRole="button"
             accessibilityLabel={`Remind me in ${snoozeMinutes} minutes`}
             style={({ pressed }) => [styles.snoozeRow, { opacity: pressed ? 0.9 : 1 }]}>

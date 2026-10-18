@@ -1,9 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as React from 'react';
+import type { ImageSourcePropType } from 'react-native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import Colors from '@/src/assets/Colors';
 import Images from '@/src/assets/Images';
+import { getImageForTaskType } from '@/src/utils/reminders';
+import type { TaskType } from '@/src/models';
 
 type Props = {
   pillLabel?: string;
@@ -11,6 +14,8 @@ type Props = {
   timeLabel: string;
   fromName: string;
   note?: string;
+  type?: TaskType | string;
+  imageSource?: ImageSourcePropType;
   onPressAction?: () => void;
   actionLabel?: string;
   status?: 'pending' | 'completed' | 'missed';
@@ -18,17 +23,20 @@ type Props = {
 
 export default function ParentReminderCard(props: Props) {
   const status = props.status ?? 'pending';
+  const imageSource = props.imageSource ?? getImageForTaskType(props.type);
+  const pillLabel =
+    props.pillLabel ?? (props.type ? `Time for ${props.type}` : 'Care reminder');
 
   return (
     <View style={styles.wrap}>
       <View style={styles.hero}>
         <View style={styles.imageWrap}>
-          <Image source={Images.medicine} style={styles.heroImg} resizeMode="cover" />
+          <Image source={imageSource} style={styles.heroImg} resizeMode="cover" />
           <View style={styles.heroOverlay} />
 
           <View style={styles.pill}>
             <Ionicons name="notifications-outline" size={14} color={Colors.alpha.white85} />
-            <Text style={styles.pillText}>{props.pillLabel ?? 'Time for medicine'}</Text>
+            <Text style={styles.pillText}>{pillLabel}</Text>
           </View>
         </View>
 

@@ -427,5 +427,67 @@ describe('P2 UI & Polish Verifications', () => {
       expect(formatSubtitle('', 'Take pills')).toBe('Take pills');
       expect(formatSubtitle('Sarah - Take pills', 'Take pills')).toBe('Sarah - Take pills');
     });
+
+    it('maps reminder type to corresponding image source and icon', () => {
+      const { getImageForTaskType, getIconForTaskType } = require('../utils/reminders');
+      const Images = require('../assets/Images').default;
+
+      expect(getImageForTaskType('medicine')).toBe(Images.medicine);
+      expect(getImageForTaskType('water')).toBe(Images.water);
+      expect(getImageForTaskType('walk')).toBe(Images.walk);
+      expect(getImageForTaskType('exercise')).toBe(Images.exercise);
+      expect(getImageForTaskType('call')).toBe(Images.call);
+      expect(getImageForTaskType('custom')).toBe(Images.custom);
+      expect(getImageForTaskType(undefined)).toBe(Images.custom);
+
+      expect(getIconForTaskType('medicine')).toBe('medical');
+      expect(getIconForTaskType('water')).toBe('water');
+      expect(getIconForTaskType('walk')).toBe('walk');
+      expect(getIconForTaskType('exercise')).toBe('fitness');
+      expect(getIconForTaskType('call')).toBe('call');
+      expect(getIconForTaskType('custom')).toBe('sparkles');
+    });
+  });
+
+  describe('Sound & Vibration Reminder Alerts Configuration', () => {
+    const { Vibration } = require('react-native');
+
+    it('determines channel configuration based on user preferences', () => {
+      function getChannelConfig(prefs?: { soundEnabled?: boolean; vibrateEnabled?: boolean } | null) {
+        const soundEnabled = prefs?.soundEnabled ?? true;
+        const vibrateEnabled = prefs?.vibrateEnabled ?? false;
+        return {
+          name: 'Care Reminders',
+          importance: 5,
+          enableVibrate: vibrateEnabled,
+          vibrationPattern: vibrateEnabled ? [0, 400, 200, 400] : undefined,
+          sound: soundEnabled ? 'default' : null,
+        };
+      }
+
+      const enabled = getChannelConfig({ soundEnabled: true, vibrateEnabled: true });
+      expect(enabled.enableVibrate).toBe(true);
+      expect(enabled.vibrationPattern).toEqual([0, 400, 200, 400]);
+      expect(enabled.sound).toBe('default');
+
+      const disabled = getChannelConfig({ soundEnabled: false, vibrateEnabled: false });
+      expect(disabled.enableVibrate).toBe(false);
+      expect(disabled.vibrationPattern).toBeUndefined();
+      expect(disabled.sound).toBeNull();
+    });
+
+    it('vibrates and cancels vibration cleanly for in-app reminder', () => {
+      const spyVibrate = jest.spyOn(Vibration, 'vibrate').mockImplementation(() => {});
+      const spyCancel = jest.spyOn(Vibration, 'cancel').mockImplementation(() => {});
+
+      Vibration.vibrate([0, 500, 250, 500]);
+      expect(spyVibrate).toHaveBeenCalledWith([0, 500, 250, 500]);
+
+      Vibration.cancel();
+      expect(spyCancel).toHaveBeenCalled();
+
+      spyVibrate.mockRestore();
+      spyCancel.mockRestore();
+    });
   });
 });

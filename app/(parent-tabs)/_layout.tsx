@@ -2,6 +2,7 @@ import React from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/src/assets/Colors';
 
@@ -9,10 +10,17 @@ function TabBarIcon(props: {
   name: React.ComponentProps<typeof Ionicons>['name'];
   color: string;
 }) {
-  return <Ionicons size={22} style={{ marginBottom: -2 }} {...props} />;
+  return <Ionicons size={22} {...props} />;
 }
 
 export default function ParentTabLayout() {
+  const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(
+    insets.bottom,
+    Platform.select({ ios: 28, android: 24, default: 12 }) ?? 16
+  );
+  const tabBarHeight = 56 + bottomPadding;
+
   return (
     <Tabs
       screenOptions={{
@@ -22,14 +30,15 @@ export default function ParentTabLayout() {
           backgroundColor: Colors.dashboard.bg,
           borderTopWidth: 0,
           elevation: 0,
-          height: Platform.select({ ios: 96, android: 84, default: 72 }),
+          height: tabBarHeight,
           paddingTop: 8,
-          paddingBottom: Platform.select({ ios: 30, android: 20, default: 10 }),
-          marginBottom: Platform.select({ ios: 12, android: 16, default: 0 }),
+          paddingBottom: bottomPadding,
+          marginBottom: 0,
         },
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '700',
+          marginTop: 2,
         },
         tabBarItemStyle: {
           paddingVertical: 2,

@@ -73,6 +73,7 @@ export function PreferencesProvider(props: { children: React.ReactNode }) {
         } else if (
           prefs.pushNotifications === true ||
           prefs.soundEnabled !== undefined ||
+          prefs.vibrateEnabled !== undefined ||
           prefs.snoozeMinutes !== undefined
         ) {
           await reconcileScheduledNotifications(user.uid, merged);
