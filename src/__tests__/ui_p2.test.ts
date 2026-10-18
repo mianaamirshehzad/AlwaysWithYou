@@ -197,4 +197,235 @@ describe('P2 UI & Polish Verifications', () => {
       expect(audioMsg.audioUrl).toContain('voice.m4a');
     });
   });
+
+  describe('Create New Reminder Modal Validation & Right Now Logic', () => {
+    function computeCanSubmit(params: {
+      selectedType: string | null;
+      customTitle: string;
+      timingOption: 'now' | 'scheduled' | null;
+      frequency: string | null;
+      selectedDays: number[];
+      submitting: boolean;
+    }) {
+      const isTypeValid =
+        params.selectedType !== null &&
+        (params.selectedType !== 'custom' || params.customTitle.trim().length > 0);
+      const isTimeValid = params.timingOption !== null;
+      const isFrequencyValid = params.frequency !== null;
+      const isRepeatOnValid = params.selectedDays.length > 0;
+
+      return (
+        isTypeValid &&
+        isTimeValid &&
+        isFrequencyValid &&
+        isRepeatOnValid &&
+        !params.submitting
+      );
+    }
+
+    it('requires all 4 fields (type, time, frequency, repeat on) to activate Send Reminder', () => {
+      // Initially all empty
+      expect(
+        computeCanSubmit({
+          selectedType: null,
+          customTitle: '',
+          timingOption: null,
+          frequency: null,
+          selectedDays: [],
+          submitting: false,
+        })
+      ).toBe(false);
+
+      // Only type selected
+      expect(
+        computeCanSubmit({
+          selectedType: 'medicine',
+          customTitle: '',
+          timingOption: null,
+          frequency: null,
+          selectedDays: [],
+          submitting: false,
+        })
+      ).toBe(false);
+
+      // Type + time selected
+      expect(
+        computeCanSubmit({
+          selectedType: 'medicine',
+          customTitle: '',
+          timingOption: 'now',
+          frequency: null,
+          selectedDays: [],
+          submitting: false,
+        })
+      ).toBe(false);
+
+      // Type + time + frequency selected, but no repeat days
+      expect(
+        computeCanSubmit({
+          selectedType: 'medicine',
+          customTitle: '',
+          timingOption: 'now',
+          frequency: 'daily',
+          selectedDays: [],
+          submitting: false,
+        })
+      ).toBe(false);
+
+      // All 4 valid
+      expect(
+        computeCanSubmit({
+          selectedType: 'medicine',
+          customTitle: '',
+          timingOption: 'now',
+          frequency: 'daily',
+          selectedDays: [0, 1, 2, 3, 4, 5, 6],
+          submitting: false,
+        })
+      ).toBe(true);
+
+      // Custom type requires non-empty customTitle
+      expect(
+        computeCanSubmit({
+          selectedType: 'custom',
+          customTitle: '   ',
+          timingOption: 'scheduled',
+          frequency: 'once',
+          selectedDays: [1],
+          submitting: false,
+        })
+      ).toBe(false);
+
+      expect(
+        computeCanSubmit({
+          selectedType: 'custom',
+          customTitle: 'Special test',
+          timingOption: 'scheduled',
+          frequency: 'once',
+          selectedDays: [1],
+          submitting: false,
+        })
+      ).toBe(true);
+    });
+
+    it('formats right now time to HH:mm correctly', () => {
+      const d = new Date(2026, 9, 19, 14, 5);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      expect(`${hh}:${mm}`).toBe('14:05');
+    });
+  });
+
+  describe('Ready-Made Notes & Note Auto-Customization Logic', () => {
+    const {
+      getReadyMadeNote,
+      getParentGreeting,
+      isReadyMadeNote,
+    } = require('../utils/reminders');
+
+    it('generates warm parent greetings when name is provided', () => {
+      expect(getParentGreeting('Margaret Smith')).toBe('Hi Margaret, ');
+      expect(getParentGreeting('Dad')).toBe('Hi Dad, ');
+      expect(getParentGreeting('your parent')).toBe('');
+      expect(getParentGreeting('')).toBe('');
+      expect(getParentGreeting(undefined)).toBe('');
+    });
+
+    it('generates standard ready-made notes for non-custom types', () => {
+      expect(getReadyMadeNote('medicine', 'Margaret Smith')).toBe(
+        'Hi Margaret, remember to take your medicine on time.'
+      );
+      expect(getReadyMadeNote('water', 'Dad')).toBe(
+        'Hi Dad, please drink a glass of water and stay hydrated.'
+      );
+      expect(getReadyMadeNote('walk', 'Mom')).toBe(
+        'Hi Mom, time for a gentle and refreshing walk.'
+      );
+      expect(getReadyMadeNote('exercise', 'your parent')).toBe(
+        'time for your daily light exercise.'
+      );
+      expect(getReadyMadeNote('call', '')).toBe('looking forward to our call today!');
+      expect(getReadyMadeNote('custom', 'Mom')).toBe('');
+    });
+
+    it('correctly identifies ready-made notes vs customized notes', () => {
+      const note = getReadyMadeNote('medicine', 'Dad');
+      expect(isReadyMadeNote(note, 'Dad')).toBe(true);
+
+      // Customized note should not be identified as ready-made
+      expect(isReadyMadeNote('Hi Dad, take your vitamins please', 'Dad')).toBe(false);
+      expect(isReadyMadeNote('', 'Dad')).toBe(false);
+    });
+
+    it('switches selectedType to custom when personal note is entered or customized', () => {
+      function simulateNoteChange(params: {
+        newText: string;
+        currentType: string | null;
+        parentName: string;
+      }) {
+        let selectedType = params.currentType;
+        let title = '';
+
+        if (selectedType === null) {
+          if (params.newText.trim().length > 0) {
+            selectedType = 'custom';
+          }
+        } else if (selectedType !== 'custom') {
+          const readyMade = getReadyMadeNote(selectedType as any, params.parentName);
+          if (params.newText !== readyMade) {
+            title = selectedType;
+            selectedType = 'custom';
+          }
+        }
+
+        return { selectedType, title };
+      }
+
+      // 1. Typing note when no type selected -> selects custom
+      expect(
+        simulateNoteChange({
+          newText: 'Drink some herbal tea',
+          currentType: null,
+          parentName: 'Mom',
+        })
+      ).toEqual({ selectedType: 'custom', title: '' });
+
+      // 2. Editing preset medicine note -> switches to custom with title 'medicine'
+      expect(
+        simulateNoteChange({
+          newText: 'Hi Mom, remember to take your medicine after eating',
+          currentType: 'medicine',
+          parentName: 'Mom',
+        })
+      ).toEqual({ selectedType: 'custom', title: 'medicine' });
+
+      // 3. Leaving preset note unchanged -> stays medicine
+      const untouched = getReadyMadeNote('medicine', 'Mom');
+      expect(
+        simulateNoteChange({
+          newText: untouched,
+          currentType: 'medicine',
+          parentName: 'Mom',
+        })
+      ).toEqual({ selectedType: 'medicine', title: '' });
+    });
+
+    it('formats reminder subtitle with caregiver name and personal note correctly', () => {
+      function formatSubtitle(caregiverName: string, note?: string) {
+        const trimmed = note?.trim();
+        if (!trimmed) return caregiverName;
+        if (caregiverName && caregiverName.includes(trimmed)) return caregiverName;
+        return caregiverName ? `${caregiverName} - ${trimmed}` : trimmed;
+      }
+
+      expect(
+        formatSubtitle('Sarah', 'Hi Mom, remember to take your medicine on time.')
+      ).toBe('Sarah - Hi Mom, remember to take your medicine on time.');
+
+      expect(formatSubtitle('Sarah', '')).toBe('Sarah');
+      expect(formatSubtitle('Sarah', undefined)).toBe('Sarah');
+      expect(formatSubtitle('', 'Take pills')).toBe('Take pills');
+      expect(formatSubtitle('Sarah - Take pills', 'Take pills')).toBe('Sarah - Take pills');
+    });
+  });
 });

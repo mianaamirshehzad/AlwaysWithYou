@@ -11,6 +11,7 @@ type Props = {
   visible: boolean;
   onClose: () => void;
   fromName?: string;
+  note?: string;
   timeLabel?: string;
   title?: string;
   message?: string;
@@ -22,9 +23,16 @@ type Props = {
 
 export default function NotificationAcknowledgementModal(props: Props) {
   const fromName = props.fromName ?? 'Sarah';
+  const displayFrom =
+    props.note && props.note.trim() && !fromName.includes(props.note.trim())
+      ? `${fromName} - ${props.note.trim()}`
+      : fromName;
   const timeLabel = props.timeLabel ?? 'NOW';
   const title = props.title ?? 'Drink Water';
-  const message = props.message ?? '"Hi Dad, a gentle\nreminder to drink a\nglass of water right\nnow!"';
+  const defaultMsg = props.note?.trim()
+    ? `"${props.note.trim()}"`
+    : '"Hi Dad, a gentle\nreminder to take care\nright now!"';
+  const message = props.message ?? defaultMsg;
   const imageSource = props.imageSource ?? Images.water;
   const snoozeMinutes = props.snoozeMinutes ?? 15;
 
@@ -55,7 +63,7 @@ export default function NotificationAcknowledgementModal(props: Props) {
 
             <View style={styles.fromChip}>
               <Ionicons name="heart" size={12} color={Colors.dashboard.accent} />
-              <Text style={styles.fromChipText}>From {fromName}</Text>
+              <Text style={styles.fromChipText} numberOfLines={1}>From {displayFrom}</Text>
             </View>
           </View>
 

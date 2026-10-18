@@ -10,6 +10,7 @@ type Props = {
   title: string;
   timeLabel: string;
   fromName: string;
+  note?: string;
   onPressAction?: () => void;
   actionLabel?: string;
   status?: 'pending' | 'completed' | 'missed';
@@ -47,7 +48,11 @@ export default function ParentReminderCard(props: Props) {
             </View>
             <View style={styles.fromTextCol}>
               <Text style={styles.fromKicker}>REMINDER FROM</Text>
-              <Text style={styles.fromName}>{props.fromName}</Text>
+              <Text style={styles.fromName} numberOfLines={2}>
+                {props.note && props.note.trim() && !props.fromName.includes(props.note.trim())
+                  ? `${props.fromName} - ${props.note.trim()}`
+                  : props.fromName}
+              </Text>
             </View>
           </View>
 
@@ -141,9 +146,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fromTextCol: { gap: 2 },
+  fromTextCol: { gap: 2, flex: 1 },
   fromKicker: { color: Colors.alpha.white35, fontSize: 10, letterSpacing: 1.2, fontWeight: '900' },
-  fromName: { color: Colors.dashboard.text, fontSize: 12, fontWeight: '900' },
+  fromName: { color: Colors.dashboard.text, fontSize: 12, fontWeight: '900', lineHeight: 17 },
 
   actionBtn: {
     width: '100%',

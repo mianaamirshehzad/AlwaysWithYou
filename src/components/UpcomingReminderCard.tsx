@@ -9,9 +9,17 @@ type Props = {
   subtitle: string;
   timeLabel: string;
   iconName: React.ComponentProps<typeof Ionicons>['name'];
+  note?: string;
 };
 
 export default function UpcomingReminderCard(props: Props) {
+  const displaySubtitle = React.useMemo(() => {
+    const trimmedNote = props.note?.trim();
+    if (!trimmedNote) return props.subtitle;
+    if (props.subtitle && props.subtitle.includes(trimmedNote)) return props.subtitle;
+    return props.subtitle ? `${props.subtitle} - ${trimmedNote}` : trimmedNote;
+  }, [props.subtitle, props.note]);
+
   return (
     <View style={styles.card} accessibilityRole="summary">
       <View style={styles.left}>
@@ -20,7 +28,7 @@ export default function UpcomingReminderCard(props: Props) {
         </View>
         <View style={styles.textCol}>
           <Text style={styles.title} numberOfLines={1}>{props.title}</Text>
-          <Text style={styles.subtitle} numberOfLines={1}>{props.subtitle}</Text>
+          <Text style={styles.subtitle} numberOfLines={2}>{displaySubtitle}</Text>
         </View>
       </View>
 
@@ -55,6 +63,6 @@ const styles = StyleSheet.create({
   },
   textCol: { gap: 2, flex: 1 },
   title: { color: Colors.dashboard.text, fontSize: 14, fontWeight: '900' },
-  subtitle: { color: Colors.alpha.white45, fontSize: 11, fontWeight: '800' },
+  subtitle: { color: Colors.alpha.white45, fontSize: 11, fontWeight: '800', lineHeight: 16 },
   time: { color: Colors.alpha.white55, fontSize: 12, fontWeight: '900', marginLeft: 12 },
 });

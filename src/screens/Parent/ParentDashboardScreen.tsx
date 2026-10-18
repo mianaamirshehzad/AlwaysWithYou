@@ -263,6 +263,7 @@ export default function ParentDashboardScreen() {
                 title={primaryPending.title}
                 timeLabel={formatTime12h(primaryPending.scheduledTime)}
                 fromName={firstChildNameForCard}
+                note={primaryPending.note}
                 actionLabel={completingId === primaryPending.id ? 'Completing...' : 'Mark Done'}
                 onPressAction={() => handleComplete(primaryPending)}
               />
@@ -284,6 +285,7 @@ export default function ParentDashboardScreen() {
                     key={occ.id}
                     title={occ.title}
                     subtitle={childProfiles.get(occ.childId)?.name ?? ''}
+                    note={occ.note}
                     timeLabel={formatTime12h(occ.scheduledTime)}
                     iconName={TASK_ICON_MAP[occ.type] ?? 'ellipsis-horizontal-outline'}
                   />
@@ -301,6 +303,7 @@ export default function ParentDashboardScreen() {
                     key={occ.id}
                     title={occ.title}
                     subtitle={childProfiles.get(occ.childId)?.name ?? ''}
+                    note={occ.note}
                     timeLabel={`${formatTime12h(occ.scheduledTime)} ✓`}
                     iconName={TASK_ICON_MAP[occ.type] ?? 'checkmark-outline'}
                   />
@@ -318,6 +321,7 @@ export default function ParentDashboardScreen() {
                     key={occ.id}
                     title={occ.title}
                     subtitle={childProfiles.get(occ.childId)?.name ?? ''}
+                    note={occ.note}
                     timeLabel={`${formatTime12h(occ.scheduledTime)} ✗`}
                     iconName={TASK_ICON_MAP[occ.type] ?? 'alert-circle-outline'}
                   />
@@ -338,6 +342,7 @@ export default function ParentDashboardScreen() {
           visible={notifOpen}
           onClose={() => setNotifOpen(false)}
           fromName={firstChildNameForCard}
+          note={primaryPending?.note}
           timeLabel={primaryPending ? formatTime12h(primaryPending.scheduledTime) : 'NOW'}
           title={primaryPending?.title ?? 'Care Reminder'}
           message={primaryPending?.note ? `"${primaryPending.note}"` : undefined}

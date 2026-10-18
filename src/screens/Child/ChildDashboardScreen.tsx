@@ -23,6 +23,7 @@ import ParentSwitcherModal from '../../components/ParentSwitcherModal';
 import CreateNewReminderModal from './CreateNewReminderModal';
 import Images from '../../assets/Images';
 import type { TaskType } from '../../models';
+import { getReadyMadeNote } from '@/src/utils/reminders';
 import { deliverCaregiverEscalationAlert, registerPushTokenForUser } from '../../services/notifications';
 import EmptyState from '../../components/EmptyState';
 import ErrorBanner from '../../components/ErrorBanner';
@@ -142,6 +143,7 @@ export default function ChildDashboardScreen() {
     now.setMinutes(now.getMinutes() + 5);
     const hh = String(now.getHours()).padStart(2, '0');
     const mm = String(now.getMinutes()).padStart(2, '0');
+    const note = getReadyMadeNote(type, selectedParent?.profile?.name);
     try {
       await createCareTask({
         relationshipId,
@@ -149,7 +151,7 @@ export default function ChildDashboardScreen() {
         assignedTo: parentUid,
         type,
         title,
-        note: '',
+        note,
         description: '',
         scheduledTime: `${hh}:${mm}`,
         frequency: 'once',
