@@ -18,7 +18,7 @@ module.exports = {
       'babel-jest',
       {
         caller: { name: 'metro', bundler: 'metro', platform: 'ios' },
-        configFile: require.resolve('expo/internal/babel-preset.js'),
+        configFile: require.resolve('expo/internal/babel-preset'),
       },
     ],
   },

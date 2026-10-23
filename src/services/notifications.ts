@@ -1,4 +1,5 @@
 import * as Notifications from 'expo-notifications';
+import { AndroidImportance } from 'expo-notifications';
 import { Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import { getFirebaseDb } from './firebase';
@@ -28,7 +29,7 @@ export async function ensureNotificationChannel(prefs?: UserPreferences | null):
       const vibrateEnabled = prefs?.vibrateEnabled ?? false;
       await Notifications.setNotificationChannelAsync('default', {
         name: 'Care Reminders',
-        importance: Notifications.AndroidImportance.MAX,
+        importance: AndroidImportance.MAX,
         enableVibrate: vibrateEnabled,
         vibrationPattern: vibrateEnabled ? [0, 400, 200, 400] : undefined,
         lightColor: '#32D57B',

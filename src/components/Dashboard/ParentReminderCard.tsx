@@ -103,7 +103,7 @@ const styles = StyleSheet.create({
   },
   imageWrap: { position: 'relative' },
   heroImg: { width: '100%', height: 210, opacity: 1 },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: Colors.auth.overlayStrong },
+  heroOverlay: { ...StyleSheet.absoluteFill, backgroundColor: Colors.auth.overlayStrong },
   pill: {
     position: 'absolute',
     top: 14,

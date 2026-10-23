@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   ringFill: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: 999,
     borderWidth: 3,
     borderColor: Colors.dashboard.accent,

@@ -53,7 +53,7 @@ function InviteCodeEntry(props: { value: string; onChange: (code: string) => voi
     return raw.split('').map((c) => (c === ' ' ? '' : c));
   }, [props.value]);
 
-  const inputs = React.useRef<Array<TextInput | null>>([]);
+  const inputs = React.useRef<Array<React.ComponentRef<typeof TextInput> | null>>([]);
 
   function setDigit(index: number, text: string) {
     const char = text.replace(/[^0-9]/g, '').slice(-1);
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.alpha.white06,
   },
   heroImage: { width: '100%', height: '100%' },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: Colors.auth.heroOverlay },
+  heroOverlay: { ...StyleSheet.absoluteFill, backgroundColor: Colors.auth.heroOverlay },
 
   segmentWrap: {
     flexDirection: 'row',

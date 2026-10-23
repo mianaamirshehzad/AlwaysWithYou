@@ -8,7 +8,7 @@ import Colors from '@/src/assets/Colors';
 
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof Ionicons>['name'];
-  color: string;
+  color?: any;
 }) {
   return <Ionicons size={22} {...props} />;
 }

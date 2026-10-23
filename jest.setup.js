@@ -25,3 +25,18 @@ jest.mock('expo-image-picker', () => ({
   },
 }));
 
+jest.mock('expo-notifications', () => {
+  const actual = jest.requireActual('expo-notifications');
+  return {
+    ...actual,
+    setNotificationHandler: jest.fn(),
+    setNotificationChannelAsync: jest.fn(async () => ({})),
+    scheduleNotificationAsync: jest.fn(async () => 'mock-notification-id'),
+    cancelScheduledNotificationAsync: jest.fn(async () => undefined),
+    cancelAllScheduledNotificationsAsync: jest.fn(async () => undefined),
+    getAllScheduledNotificationsAsync: jest.fn(async () => []),
+    getPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
+    requestPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
+  };
+});
+

@@ -12,6 +12,10 @@
     "resolveJsonModule": true,
     "allowJs": true,
     "skipLibCheck": true,
+    "types": [
+      "jest",
+      "node"
+    ],
     "paths": {
       "@/*": [
         "./*"

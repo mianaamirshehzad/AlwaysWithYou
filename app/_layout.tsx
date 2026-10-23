@@ -58,7 +58,7 @@ function RootLayoutNav() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <StatusBar style="light" translucent backgroundColor="transparent" />
+      <StatusBar style="light" />
       <AuthProvider>
         <PreferencesProvider>
           <RelationshipsProvider>
@@ -185,7 +185,7 @@ function AuthGateError(props: { onRetry: () => void }) {
 
 const styles = StyleSheet.create({
   gate: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: Colors.dashboard.bg,
     alignItems: 'center',
     justifyContent: 'center',

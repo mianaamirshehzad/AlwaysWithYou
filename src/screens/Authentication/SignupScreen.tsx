@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
   },
   circleImage: { width: '100%', height: '100%', opacity: 0.22 },
   circleOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: Colors.auth.overlayStrong,
   },
   cta: { marginTop: 2 },

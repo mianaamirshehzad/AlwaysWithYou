@@ -279,8 +279,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: Colors.dashboard.surfaceStrong,
   },
-  mediaImg: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
-  mediaOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: Colors.alpha.black80, opacity: 0.12 },
+  mediaImg: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
+  mediaOverlay: { ...StyleSheet.absoluteFill, backgroundColor: Colors.alpha.black80, opacity: 0.12 },
   mediaOverlayBottom: {
     position: 'absolute',
     left: 0,
