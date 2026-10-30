@@ -17,9 +17,9 @@ import ErrorBanner from '../../components/ErrorBanner';
 import { useAuth } from '../../context/AuthContext';
 import { useRelationships } from '../../context/RelationshipsContext';
 import { usePreferences } from '../../context/PreferencesContext';
+import { useUserProfile } from '../../context/UserProfileContext';
 import { getCurrentUser, logOut } from '../../services/auth';
 import { createInvitation } from '../../services/firestore/invitations';
-import { getUserProfile } from '../../services/firestore/users';
 import {
   requestNotificationPermission,
   openNotificationSettings,
@@ -33,8 +33,8 @@ export default function ChildSettingsScreen() {
   const { user, role } = useAuth();
   const { parents } = useRelationships();
   const { preferences, update, saveError, retrySave } = usePreferences();
+  const { profile, updateProfile } = useUserProfile();
 
-  const [profile, setProfile] = React.useState<UserProfile | null>(null);
   const [profileModalVisible, setProfileModalVisible] = React.useState(false);
   const [loggingOut, setLoggingOut] = React.useState(false);
 
@@ -48,24 +48,6 @@ export default function ChildSettingsScreen() {
       setProfileModalVisible(true);
     }
   }, [params.editProfile]);
-
-  React.useEffect(() => {
-    if (!user) return;
-    let mounted = true;
-    getUserProfile(user.uid)
-      .then((p) => {
-        if (mounted && p) {
-          setProfile(p);
-        }
-      })
-      .catch((err) => {
-        console.warn('Failed to load caregiver profile:', err);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [user]);
 
   const generateInvitation = async (childUid: string) => {
     setInviting(true);
@@ -228,16 +210,11 @@ export default function ChildSettingsScreen() {
           initialPhotoUrl={profile?.photoUrl}
           onClose={() => setProfileModalVisible(false)}
           onSaved={(newName, newPhone, newPhotoUrl) => {
-            setProfile((p) =>
-              p
-                ? {
-                    ...p,
-                    name: newName,
-                    phone: newPhone,
-                    ...(newPhotoUrl !== undefined ? { photoUrl: newPhotoUrl } : {}),
-                  }
-                : p
-            );
+            void updateProfile({
+              name: newName,
+              phone: newPhone,
+              ...(newPhotoUrl !== undefined ? { photoUrl: newPhotoUrl } : {}),
+            });
           }}
         />
       ) : null}

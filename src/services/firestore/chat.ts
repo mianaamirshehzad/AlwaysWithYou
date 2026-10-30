@@ -41,7 +41,8 @@ export async function sendMessage(
   senderId: string,
   text: string,
   extra?: {
-    messageType?: 'text' | 'audio';
+    messageType?: 'text' | 'audio' | 'image';
+    imageUrl?: string;
     audioUrl?: string;
     audioDurationMs?: number;
   }
@@ -56,6 +57,9 @@ export async function sendMessage(
     status: 'sent',
     createdAt: serverTimestamp(),
   };
+  if (extra?.imageUrl) {
+    data.imageUrl = extra.imageUrl;
+  }
   if (extra?.audioUrl) {
     data.audioUrl = extra.audioUrl;
   }
@@ -64,8 +68,15 @@ export async function sendMessage(
   }
 
   const ref = await addDoc(collection(db, MESSAGES_COLLECTION), data);
+  const previewText =
+    extra?.messageType === 'audio'
+      ? '🎤 Voice message'
+      : extra?.messageType === 'image'
+      ? '📷 Photo'
+      : text.trim();
+
   await updateDoc(doc(db, CONVERSATIONS_COLLECTION, conversationId), {
-    lastMessage: extra?.messageType === 'audio' ? '🎤 Voice message' : text.trim(),
+    lastMessage: previewText,
     lastMessageAt: serverTimestamp(),
   });
   return ref.id;
@@ -76,7 +87,8 @@ export async function sendMessageWithRetry(
   senderId: string,
   text: string,
   extra?: {
-    messageType?: 'text' | 'audio';
+    messageType?: 'text' | 'audio' | 'image';
+    imageUrl?: string;
     audioUrl?: string;
     audioDurationMs?: number;
   },

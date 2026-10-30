@@ -13,6 +13,7 @@ import UpcomingReminderCard from '../../components/UpcomingReminderCard';
 import { useAuth } from '../../context/AuthContext';
 import { usePreferences } from '../../context/PreferencesContext';
 import { useRelationships } from '../../context/RelationshipsContext';
+import { useUserProfile } from '../../context/UserProfileContext';
 import {
   subscribeToOccurrencesForParent,
   getTodayOccurrences,
@@ -39,8 +40,8 @@ export default function ParentDashboardScreen() {
   const { user } = useAuth();
   const { preferences } = usePreferences();
   const { relationships } = useRelationships();
+  const { profile: parentProfile } = useUserProfile();
 
-  const [parentProfile, setParentProfile] = React.useState<UserProfile | null>(null);
   const [childProfiles, setChildProfiles] = React.useState<Map<string, UserProfile>>(new Map());
   const [occurrences, setOccurrences] = React.useState<TaskOccurrence[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -53,15 +54,7 @@ export default function ParentDashboardScreen() {
 
   React.useEffect(() => {
     if (!user) return;
-    let mounted = true;
-
     registerPushTokenForUser(user.uid).catch(() => {});
-
-    getUserProfile(user.uid).then((p) => {
-      if (mounted) setParentProfile(p);
-    });
-
-    return () => { mounted = false; };
   }, [user]);
 
   React.useEffect(() => {

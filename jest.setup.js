@@ -18,6 +18,8 @@ jest.mock('@expo/vector-icons/Ionicons', () => {
 jest.mock('expo-image-picker', () => ({
   requestMediaLibraryPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
   launchImageLibraryAsync: jest.fn(async () => ({ canceled: true, assets: null })),
+  requestCameraPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
+  launchCameraAsync: jest.fn(async () => ({ canceled: true, assets: null })),
   PermissionStatus: {
     GRANTED: 'granted',
     DENIED: 'denied',

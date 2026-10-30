@@ -17,7 +17,7 @@ import Colors from '@/src/assets/Colors';
 import ErrorBanner from '@/src/components/ErrorBanner';
 import SuccessFeedback from '@/src/components/SuccessFeedback';
 import { useAuth } from '@/src/context/AuthContext';
-import { getUserProfile, updateUserProfile } from '@/src/services/firestore/users';
+import { useUserProfile } from '@/src/context/UserProfileContext';
 import { pickProfileImageFromGallery } from '@/src/services/imagePicker';
 import { getInitials } from '@/src/utils/date';
 import { validateDisplayName, validatePhoneNumber } from '@/src/utils/validation';
@@ -25,11 +25,11 @@ import type { UserProfile } from '@/src/models';
 
 export default function ChildProfileScreen() {
   const { user, role } = useAuth();
+  const { profile, updateProfile } = useUserProfile();
 
-  const [profile, setProfile] = React.useState<UserProfile | null>(null);
-  const [name, setName] = React.useState('');
-  const [phone, setPhone] = React.useState('');
-  const [photoUrl, setPhotoUrl] = React.useState<string | undefined>(undefined);
+  const [name, setName] = React.useState(profile?.name ?? '');
+  const [phone, setPhone] = React.useState(profile?.phone ?? '');
+  const [photoUrl, setPhotoUrl] = React.useState<string | undefined>(profile?.photoUrl);
   const [pickingImage, setPickingImage] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -39,16 +39,12 @@ export default function ChildProfileScreen() {
   const [phoneError, setPhoneError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (!user) return;
-    getUserProfile(user.uid).then((p) => {
-      if (p) {
-        setProfile(p);
-        setName(p.name ?? '');
-        setPhone(p.phone ?? '');
-        setPhotoUrl(p.photoUrl);
-      }
-    });
-  }, [user]);
+    if (profile) {
+      setName(profile.name ?? '');
+      setPhone(profile.phone ?? '');
+      setPhotoUrl(profile.photoUrl);
+    }
+  }, [profile]);
 
   const handlePickImage = async () => {
     try {
@@ -57,8 +53,7 @@ export default function ChildProfileScreen() {
       const pickedUri = await pickProfileImageFromGallery();
       if (pickedUri && user) {
         setPhotoUrl(pickedUri);
-        await updateUserProfile(user.uid, { photoUrl: pickedUri });
-        setProfile((p) => (p ? { ...p, photoUrl: pickedUri } : p));
+        await updateProfile({ photoUrl: pickedUri });
         setSuccessMessage('Profile picture updated successfully');
       }
     } catch (err: any) {
@@ -105,15 +100,11 @@ export default function ChildProfileScreen() {
     setErrorMessage(null);
     try {
       // Role, uid, and email remain strictly immutable
-      await updateUserProfile(user.uid, {
+      await updateProfile({
         name: nameVal.value,
         phone: phoneVal.value,
         ...(photoUrl !== undefined ? { photoUrl } : {}),
       });
-
-      setProfile((p) =>
-        p ? { ...p, name: nameVal.value, phone: phoneVal.value, photoUrl } : p
-      );
       setEditing(false);
       setSuccessMessage('Profile updated successfully');
     } catch (err: any) {

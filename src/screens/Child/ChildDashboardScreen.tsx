@@ -19,7 +19,10 @@ import CareCard, { type CareStatus } from '../../components/Dashboard/CareCard';
 import FloatingActionButton from '../../components/Dashboard/FloatingActionButton';
 import QuickSendItem from '../../components/Dashboard/QuickSendItem';
 import SummaryCard from '../../components/Dashboard/SummaryCard';
-import ParentSwitcherModal from '../../components/ParentSwitcherModal';
+import ParentDropdownSelector from '../../components/ParentDropdownSelector';
+import QuickSendConfirmModal from '../../components/QuickSendConfirmModal';
+import InviteParentModal from '../../components/ChildSettings/InviteParentModal';
+import { createInvitation } from '../../services/firestore/invitations';
 import CreateNewReminderModal from './CreateNewReminderModal';
 import Images from '../../assets/Images';
 import type { TaskType } from '../../models';
@@ -36,7 +39,26 @@ export default function ChildDashboardScreen() {
 
   const [timelineTab, setTimelineTab] = React.useState<'today' | 'history'>('today');
   const [createReminderOpen, setCreateReminderOpen] = React.useState(false);
-  const [switcherOpen, setSwitcherOpen] = React.useState(false);
+  const [inviteModalVisible, setInviteModalVisible] = React.useState(false);
+  const [inviteCode, setInviteCode] = React.useState<string | null>(null);
+  const [generatingInvite, setGeneratingInvite] = React.useState(false);
+  const [inviteError, setInviteError] = React.useState<string | null>(null);
+
+  // Quick Send confirmation state
+  const [quickSendModal, setQuickSendModal] = React.useState<{
+    visible: boolean;
+    type: TaskType;
+    title: string;
+    isSending: boolean;
+    error: string | null;
+  }>({
+    visible: false,
+    type: 'water',
+    title: '',
+    isSending: false,
+    error: null,
+  });
+
   const [occurrences, setOccurrences] = React.useState<any[]>([]);
   const [historyOccurrences, setHistoryOccurrences] = React.useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = React.useState(false);
@@ -134,23 +156,53 @@ export default function ChildDashboardScreen() {
     return () => sub.remove();
   }, [parentUid, user?.uid]);
 
-  const quickSend = async (type: TaskType, title: string) => {
+  const handleOpenInvite = async () => {
+    if (!user?.uid) return;
+    setInviteModalVisible(true);
+    setGeneratingInvite(true);
+    setInviteError(null);
+    setInviteCode(null);
+    try {
+      const code = await createInvitation(user.uid);
+      setInviteCode(code);
+    } catch (err: any) {
+      setInviteError(err?.message ?? 'Unable to generate invitation code.');
+    } finally {
+      setGeneratingInvite(false);
+    }
+  };
+
+  const promptQuickSend = (type: TaskType, title: string) => {
     if (!user || !relationshipId || !parentUid) {
       Alert.alert('No Parent Selected', 'Please connect a parent first.');
       return;
     }
+    setQuickSendModal({
+      visible: true,
+      type,
+      title,
+      isSending: false,
+      error: null,
+    });
+  };
+
+  const handleConfirmQuickSend = async () => {
+    if (!user || !relationshipId || !parentUid) return;
+    setQuickSendModal((prev) => ({ ...prev, isSending: true, error: null }));
+
     const now = new Date();
     now.setMinutes(now.getMinutes() + 5);
     const hh = String(now.getHours()).padStart(2, '0');
     const mm = String(now.getMinutes()).padStart(2, '0');
-    const note = getReadyMadeNote(type, selectedParent?.profile?.name);
+    const note = getReadyMadeNote(quickSendModal.type, selectedParent?.profile?.name);
+
     try {
       await createCareTask({
         relationshipId,
         createdBy: user.uid,
         assignedTo: parentUid,
-        type,
-        title,
+        type: quickSendModal.type,
+        title: quickSendModal.title,
         note,
         description: '',
         scheduledTime: `${hh}:${mm}`,
@@ -158,9 +210,27 @@ export default function ChildDashboardScreen() {
         startDate: todayString(),
         active: true,
       });
-      Alert.alert('Reminder Sent', `Sent "${title}" to ${selectedParent?.profile?.name ?? 'your parent'}.`);
+
+      const sentTitle = quickSendModal.title;
+      // Close confirmation modal
+      setQuickSendModal({
+        visible: false,
+        type: 'water',
+        title: '',
+        isSending: false,
+        error: null,
+      });
+
+      Alert.alert(
+        'Reminder Sent',
+        `Sent "${sentTitle}" to ${selectedParent?.profile?.name ?? 'your parent'}.`
+      );
     } catch {
-      Alert.alert('Could Not Send', 'Please check your connection and try again.');
+      setQuickSendModal((prev) => ({
+        ...prev,
+        isSending: false,
+        error: 'Could not send reminder. Please check your connection and try again.',
+      }));
     }
   };
 
@@ -183,25 +253,13 @@ export default function ChildDashboardScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-          <Pressable
-            onPress={() => setSwitcherOpen(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Switch parent"
-            style={({ pressed }) => [styles.parentChip, { opacity: pressed ? 0.85 : 1 }]}>
-            <View style={styles.parentAvatar}>
-              <Text style={styles.parentAvatarText}>
-                {getInitials(selectedParent?.profile?.name ?? 'Parent')}
-              </Text>
-            </View>
-            <View style={styles.parentChipTextCol}>
-              <Text style={styles.parentKicker}>CARING FOR</Text>
-              <Text style={styles.parentName}>
-                {selectedParent?.profile?.name ??
-                  (relationshipsLoading ? 'Loading parent...' : 'No parent connected')}
-              </Text>
-            </View>
-            <Ionicons name="chevron-down" size={18} color={Colors.alpha.white60} />
-          </Pressable>
+          <ParentDropdownSelector
+            parents={parents}
+            selectedParent={selectedParent}
+            loading={relationshipsLoading}
+            onSelectParent={setSelectedParentId}
+            onAddNewParent={handleOpenInvite}
+          />
 
           {relationshipsLoading && !selectedParent ? (
             <View style={styles.dashboardLoadingWrap}>
@@ -232,9 +290,9 @@ export default function ChildDashboardScreen() {
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Quick Send</Text>
                 <View style={styles.quickRow}>
-                  <QuickSendItem label="Water" iconName="water-outline" onPress={() => quickSend('water', 'Drink water')} />
-                  <QuickSendItem label="Meds" iconName="medical-outline" onPress={() => quickSend('medicine', 'Take medicine')} />
-                  <QuickSendItem label="Call" iconName="call-outline" onPress={() => quickSend('call', `Call ${selectedParent?.profile?.name ?? 'me'}`)} />
+                  <QuickSendItem label="Water" iconName="water-outline" onPress={() => promptQuickSend('water', 'Drink water')} />
+                  <QuickSendItem label="Meds" iconName="medical-outline" onPress={() => promptQuickSend('medicine', 'Take medicine')} />
+                  <QuickSendItem label="Call" iconName="call-outline" onPress={() => promptQuickSend('call', `Call ${selectedParent?.profile?.name ?? 'me'}`)} />
                 </View>
               </View>
 
@@ -265,13 +323,36 @@ export default function ChildDashboardScreen() {
           />
         ) : null}
 
-        <ParentSwitcherModal
-          visible={switcherOpen}
-          parents={parents}
-          selectedUid={parentUid}
-          onSelect={setSelectedParentId}
-          onClose={() => setSwitcherOpen(false)}
+        <QuickSendConfirmModal
+          visible={quickSendModal.visible}
+          type={quickSendModal.type}
+          title={quickSendModal.title}
+          parentName={selectedParent?.profile?.name ?? 'your parent'}
+          isSending={quickSendModal.isSending}
+          error={quickSendModal.error}
+          onConfirm={handleConfirmQuickSend}
+          onCancel={() =>
+            setQuickSendModal({
+              visible: false,
+              type: 'water',
+              title: '',
+              isSending: false,
+              error: null,
+            })
+          }
         />
+
+        <InviteParentModal
+          visible={inviteModalVisible}
+          code={inviteCode}
+          generating={generatingInvite}
+          error={inviteError}
+          onRetry={() => {
+            if (user?.uid) void handleOpenInvite();
+          }}
+          onClose={() => setInviteModalVisible(false)}
+        />
+
         <CreateNewReminderModal
           visible={createReminderOpen}
           onClose={() => setCreateReminderOpen(false)}

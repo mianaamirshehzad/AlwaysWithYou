@@ -485,10 +485,10 @@ service cloud.firestore {
       allow create: if isParticipantInRelationship(request.resource.data.conversationId)
         && request.resource.data.keys().hasOnly(
              ['conversationId', 'senderId', 'text', 'messageType',
-              'audioUrl', 'audioDurationMs', 'status', 'createdAt'])
+              'imageUrl', 'audioUrl', 'audioDurationMs', 'status', 'createdAt'])
         && request.resource.data.senderId == request.auth.uid
         && request.resource.data.status == 'sent'
-        && request.resource.data.messageType in ['text', 'audio']
+        && request.resource.data.messageType in ['text', 'audio', 'image']
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
         && request.resource.data.text.size() <= 4000

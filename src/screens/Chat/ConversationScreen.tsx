@@ -8,6 +8,8 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
+  Linking,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -16,13 +18,26 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { doc, getDoc } from 'firebase/firestore';
 
 import Colors from '@/src/assets/Colors';
 import EmptyState from '@/src/components/EmptyState';
 import ErrorBanner from '@/src/components/ErrorBanner';
 import { useAuth } from '@/src/context/AuthContext';
+import { getFirebaseDb } from '@/src/services/firebase';
+import { getUserProfile } from '@/src/services/firestore/users';
 import { subscribeToMessages, sendMessageWithRetry } from '@/src/services/firestore/chat';
-import { checkVoiceNoteSupport, formatAudioDuration, playAudioNote } from '@/src/services/voiceNotes';
+import { pickChatImage, takeChatPhoto } from '@/src/services/imagePicker';
+import {
+  checkVoiceNoteSupport,
+  formatAudioDuration,
+  startAudioRecording,
+  stopAudioRecording,
+  cancelAudioRecording,
+  playAudioNote,
+  pauseAudioPlayback,
+  stopAudioPlayback,
+} from '@/src/services/voiceNotes';
 import { getInitials } from '@/src/utils/date';
 import type { Message } from '@/src/models';
 
@@ -44,13 +59,62 @@ export default function ConversationScreen() {
       ? 'Parent'
       : 'Caregiver';
   const photoUrl = params.photoUrl && params.photoUrl.trim() ? params.photoUrl : null;
+  const [receiverPhoto, setReceiverPhoto] = React.useState<string | null>(photoUrl);
 
   const [messages, setMessages] = React.useState<Message[]>([]);
+  const [pendingMessages, setPendingMessages] = React.useState<Message[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [text, setText] = React.useState('');
   const [sending, setSending] = React.useState(false);
   const [sendError, setSendError] = React.useState<string | null>(null);
   const [failedText, setFailedText] = React.useState<string | null>(null);
+
+  // Sync photoUrl if updated in params, or fetch other participant's profile from Firestore
+  React.useEffect(() => {
+    if (params.photoUrl && params.photoUrl.trim().length > 0) {
+      setReceiverPhoto(params.photoUrl.trim());
+      return;
+    }
+
+    if (!relationshipId || !user) return;
+    let mounted = true;
+
+    const db = getFirebaseDb();
+    getDoc(doc(db, 'relationships', relationshipId))
+      .then(async (snap) => {
+        if (!mounted || !snap.exists()) return;
+        const data = snap.data();
+        const otherUid = data.parentId === user.uid ? data.childId : data.parentId;
+        if (otherUid) {
+          const p = await getUserProfile(otherUid);
+          if (mounted && p?.photoUrl) {
+            setReceiverPhoto(p.photoUrl);
+          }
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      mounted = false;
+    };
+  }, [relationshipId, params.photoUrl, user]);
+
+  const displayedMessages = React.useMemo(() => {
+    return [...messages, ...pendingMessages];
+  }, [messages, pendingMessages]);
+
+  // Voice recording state
+  const [isRecording, setIsRecording] = React.useState(false);
+  const [recordingDurationMs, setRecordingDurationMs] = React.useState(0);
+  const recordingTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Audio playback state
+  const [playingMessageId, setPlayingMessageId] = React.useState<string | null>(null);
+  const [playbackPositionMs, setPlaybackPositionMs] = React.useState(0);
+  const [playbackDurationMs, setPlaybackDurationMs] = React.useState(0);
+
+  // Full-screen image preview modal
+  const [previewImageUri, setPreviewImageUri] = React.useState<string | null>(null);
 
   const listRef = React.useRef<FlatList<Message>>(null);
 
@@ -73,10 +137,17 @@ export default function ConversationScreen() {
         setLoading(false);
       }
     );
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      stopAudioPlayback().catch(() => {});
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+    };
   }, [relationshipId]);
 
   const handleBack = () => {
+    stopAudioPlayback().catch(() => {});
     if (router.canGoBack()) {
       router.back();
     } else {
@@ -95,6 +166,18 @@ export default function ConversationScreen() {
     setSendError(null);
     setFailedText(null);
 
+    const tempId = `temp-${Date.now()}`;
+    const tempMsg: Message = {
+      id: tempId,
+      conversationId: relationshipId,
+      senderId: user.uid,
+      text: candidate,
+      messageType: 'text',
+      status: 'sending' as any,
+      createdAt: null as any,
+    };
+    setPendingMessages((prev) => [...prev, tempMsg]);
+
     try {
       await sendMessageWithRetry(relationshipId, user.uid, candidate);
     } catch (err: any) {
@@ -105,27 +188,269 @@ export default function ConversationScreen() {
       }
     } finally {
       setSending(false);
+      setPendingMessages((prev) => prev.filter((m) => m.id !== tempId));
     }
   };
 
-  const handleVoiceNotePress = () => {
-    const support = checkVoiceNoteSupport();
-    Alert.alert(
-      'Voice Notes Not Configured',
-      `${support.reason ?? 'Voice messages require the expo-audio library and cloud storage.'}\n\nText messages are fully operational.`,
-      [{ text: 'OK' }]
-    );
+  // Image attachment actions
+  const handleImagePickerPress = () => {
+    if (sending || !relationshipId) return;
+
+    if (Platform.OS === 'web') {
+      handlePickFromGallery();
+      return;
+    }
+
+    Alert.alert('Send Photo', 'Select a source for your photo', [
+      {
+        text: 'Take Photo',
+        onPress: handleTakePhoto,
+      },
+      {
+        text: 'Choose from Gallery',
+        onPress: handlePickFromGallery,
+      },
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+    ]);
   };
 
-  const handlePlayAudio = (item: Message) => {
+  const handlePickFromGallery = async () => {
+    if (!user || !relationshipId || sending) return;
+    try {
+      const uri = await pickChatImage();
+      if (!uri) return;
+
+      const tempId = `temp-${Date.now()}`;
+      const tempMsg: Message = {
+        id: tempId,
+        conversationId: relationshipId,
+        senderId: user.uid,
+        text: '📷 Photo',
+        messageType: 'image',
+        imageUrl: uri,
+        status: 'sending' as any,
+        createdAt: null as any,
+      };
+      setPendingMessages((prev) => [...prev, tempMsg]);
+
+      setSending(true);
+      setSendError(null);
+      try {
+        await sendMessageWithRetry(relationshipId, user.uid, '📷 Photo', {
+          messageType: 'image',
+          imageUrl: uri,
+        });
+      } finally {
+        setPendingMessages((prev) => prev.filter((m) => m.id !== tempId));
+      }
+    } catch (err: any) {
+      setSendError(err?.message ?? 'Failed to send photo. Please try again.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    if (!user || !relationshipId || sending) return;
+    try {
+      const uri = await takeChatPhoto();
+      if (!uri) return;
+
+      const tempId = `temp-${Date.now()}`;
+      const tempMsg: Message = {
+        id: tempId,
+        conversationId: relationshipId,
+        senderId: user.uid,
+        text: '📷 Photo',
+        messageType: 'image',
+        imageUrl: uri,
+        status: 'sending' as any,
+        createdAt: null as any,
+      };
+      setPendingMessages((prev) => [...prev, tempMsg]);
+
+      setSending(true);
+      setSendError(null);
+      try {
+        await sendMessageWithRetry(relationshipId, user.uid, '📷 Photo', {
+          messageType: 'image',
+          imageUrl: uri,
+        });
+      } finally {
+        setPendingMessages((prev) => prev.filter((m) => m.id !== tempId));
+      }
+    } catch (err: any) {
+      setSendError(err?.message ?? 'Failed to capture photo. Please try again.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const requestVoicePermissions = async (): Promise<boolean> => {
+    try {
+      const expoAudio = require('expo-audio');
+      if (typeof expoAudio.getRecordingPermissionsAsync === 'function') {
+        const current = await expoAudio.getRecordingPermissionsAsync();
+        if (current.granted || current.status === 'granted') return true;
+      }
+      if (typeof expoAudio.requestRecordingPermissionsAsync === 'function') {
+        const req = await expoAudio.requestRecordingPermissionsAsync();
+        if (req.granted || req.status === 'granted') return true;
+      }
+      Alert.alert(
+        'Microphone Permission Required',
+        'AlwaysWithYou needs permission to access your microphone to record and send voice messages. Please enable microphone permissions in your device settings.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Open Settings',
+            onPress: () => {
+              if (Platform.OS !== 'web') {
+                void Linking.openSettings();
+              }
+            },
+          },
+        ]
+      );
+      return false;
+    } catch {
+      return true;
+    }
+  };
+
+  // WhatsApp-style Voice Recording handlers
+  const handleStartRecording = async () => {
+    if (!user || !relationshipId || sending) return;
+
+    const support = checkVoiceNoteSupport();
+    if (!support.hasNativeAudio) {
+      Alert.alert(
+        'Voice Recording Unavailable',
+        `${support.reason ?? 'Voice recording requires audio capabilities on this device.'}\n\nText messages and photos are fully operational.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    const hasPermission = await requestVoicePermissions();
+    if (!hasPermission) return;
+
+    try {
+      await stopAudioPlayback();
+      await startAudioRecording();
+      setIsRecording(true);
+      setRecordingDurationMs(0);
+
+      const startTime = Date.now();
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDurationMs(Date.now() - startTime);
+      }, 200);
+    } catch (err: any) {
+      Alert.alert('Recording Failed', err?.message ?? 'Could not start audio recording.');
+    }
+  };
+
+  const handleCancelRecording = async () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    await cancelAudioRecording();
+    setIsRecording(false);
+    setRecordingDurationMs(0);
+  };
+
+  const handleSendVoiceRecording = async () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
+    if (!user || !relationshipId) {
+      await handleCancelRecording();
+      return;
+    }
+
+    setSending(true);
+    setIsRecording(false);
+
+    try {
+      const result = await stopAudioRecording();
+      if (!result || !result.uri) {
+        throw new Error('Recorded audio file is missing.');
+      }
+
+      const tempId = `temp-${Date.now()}`;
+      const tempMsg: Message = {
+        id: tempId,
+        conversationId: relationshipId,
+        senderId: user.uid,
+        text: '🎤 Voice message',
+        messageType: 'audio',
+        audioUrl: result.uri,
+        audioDurationMs: result.durationMs,
+        status: 'sending' as any,
+        createdAt: null as any,
+      };
+      setPendingMessages((prev) => [...prev, tempMsg]);
+
+      try {
+        await sendMessageWithRetry(relationshipId, user.uid, '🎤 Voice message', {
+          messageType: 'audio',
+          audioUrl: result.uri,
+          audioDurationMs: result.durationMs,
+        });
+      } finally {
+        setPendingMessages((prev) => prev.filter((m) => m.id !== tempId));
+      }
+    } catch (err: any) {
+      setSendError(err?.message ?? 'Failed to send voice message.');
+    } finally {
+      setSending(false);
+      setRecordingDurationMs(0);
+    }
+  };
+
+  // Audio Playback
+  const handleTogglePlayAudio = async (item: Message) => {
     if (!item.audioUrl) {
       Alert.alert('Audio Unavailable', 'No audio recording found for this message.');
       return;
     }
-    playAudioNote(item.audioUrl).catch((err) => {
-      Alert.alert('Playback Unsupported', err.message);
-    });
+
+    // If currently playing this specific message, pause it
+    if (playingMessageId === item.id) {
+      await pauseAudioPlayback();
+      setPlayingMessageId(null);
+      return;
+    }
+
+    try {
+      setPlayingMessageId(item.id);
+      setPlaybackPositionMs(0);
+      setPlaybackDurationMs(item.audioDurationMs || 0);
+
+      await playAudioNote(item.audioUrl, (status) => {
+        if (!status.isPlaying || status.didFinish) {
+          setPlayingMessageId(null);
+          setPlaybackPositionMs(0);
+        } else {
+          setPlaybackPositionMs(status.positionMs);
+          if (status.durationMs > 0) {
+            setPlaybackDurationMs(status.durationMs);
+          }
+        }
+      });
+    } catch (err: any) {
+      setPlayingMessageId(null);
+      Alert.alert('Playback Failed', err?.message ?? 'Unable to play voice note.');
+    }
   };
+
+  const hasText = text.trim().length > 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -145,8 +470,8 @@ export default function ConversationScreen() {
           </Pressable>
 
           <View style={styles.avatar}>
-            {photoUrl ? (
-              <Image source={{ uri: photoUrl }} style={styles.avatarImg} />
+            {receiverPhoto ? (
+              <Image source={{ uri: receiverPhoto }} style={styles.avatarImg} />
             ) : (
               <Text style={styles.avatarText}>{getInitials(recipientName)}</Text>
             )}
@@ -178,11 +503,11 @@ export default function ConversationScreen() {
         ) : (
           <FlatList
             ref={listRef}
-            data={messages}
+            data={displayedMessages}
             keyExtractor={(item) => item.id}
             contentContainerStyle={[
               styles.listContent,
-              messages.length === 0 && styles.listContentEmpty,
+              displayedMessages.length === 0 && styles.listContentEmpty,
             ]}
             keyboardDismissMode="on-drag"
             keyboardShouldPersistTaps="handled"
@@ -197,62 +522,185 @@ export default function ConversationScreen() {
               </Pressable>
             }
             onContentSizeChange={() => {
-              if (messages.length > 0) {
+              if (displayedMessages.length > 0) {
                 listRef.current?.scrollToEnd({ animated: true });
               }
             }}
             renderItem={({ item }) => {
               const mine = item.senderId === user?.uid;
               const isAudio = item.messageType === 'audio';
+              const isImage = item.messageType === 'image';
+              const isPlaying = playingMessageId === item.id;
+              const isPending = item.status === ('sending' as any) || !item.createdAt;
 
               return (
-                <View style={[styles.bubbleRow, mine ? styles.bubbleRowMine : styles.bubbleRowTheirs]}>
+                <View
+                  style={[
+                    styles.bubbleRow,
+                    mine ? styles.bubbleRowMine : styles.bubbleRowTheirs,
+                  ]}>
                   {!mine && (
                     <View style={styles.bubbleAvatar}>
-                      {photoUrl ? (
-                        <Image source={{ uri: photoUrl }} style={styles.bubbleAvatarImg} />
+                      {receiverPhoto ? (
+                        <Image source={{ uri: receiverPhoto }} style={styles.bubbleAvatarImg} />
                       ) : (
-                        <Text style={styles.bubbleAvatarText}>{getInitials(recipientName)}</Text>
+                        <Text style={styles.bubbleAvatarText}>
+                          {getInitials(recipientName)}
+                        </Text>
                       )}
                     </View>
                   )}
-                  <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
-                    {isAudio ? (
+                  <View
+                    style={[
+                      styles.bubble,
+                      mine ? styles.bubbleMine : styles.bubbleTheirs,
+                      isImage && styles.bubbleImageContainer,
+                    ]}>
+                    {/* Image Message */}
+                    {isImage && item.imageUrl ? (
                       <Pressable
-                        onPress={() => handlePlayAudio(item)}
+                        onPress={() => setPreviewImageUri(item.imageUrl || null)}
                         accessibilityRole="button"
-                        accessibilityLabel={`Play voice note, duration ${formatAudioDuration(item.audioDurationMs)}`}
-                        style={styles.audioRow}>
-                        <Ionicons
-                          name="play-circle"
-                          size={28}
-                          color={mine ? Colors.dashboard.bg : Colors.dashboard.accent}
+                        accessibilityLabel="View photo"
+                        style={styles.imageWrapper}>
+                        <Image
+                          source={{ uri: item.imageUrl }}
+                          style={styles.chatImage}
+                          resizeMode="cover"
                         />
-                        <View style={styles.audioMeta}>
-                          <Text
-                            style={[
-                              styles.audioDuration,
-                              mine ? styles.bubbleTextMine : styles.bubbleTextTheirs,
-                            ]}>
-                            Voice note • {formatAudioDuration(item.audioDurationMs)}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.audioHint,
-                              mine ? styles.audioHintMine : styles.audioHintTheirs,
-                            ]}>
-                            Tap to play
-                          </Text>
+                        <View style={styles.imageOverlayTime}>
+                          {isPending ? (
+                            <Ionicons
+                              name="time-outline"
+                              size={12}
+                              color="#FFFFFF"
+                              accessibilityLabel="Sending photo..."
+                            />
+                          ) : (
+                            <>
+                              <Text style={styles.imageTimeText}>
+                                {formatMessageTime(item.createdAt)}
+                              </Text>
+                              {mine && (
+                                <Ionicons
+                                  name="checkmark-done"
+                                  size={13}
+                                  color="#FFFFFF"
+                                  style={styles.statusCheck}
+                                />
+                              )}
+                            </>
+                          )}
                         </View>
                       </Pressable>
+                    ) : isAudio ? (
+                      /* Audio Voice Note Message (WhatsApp Style) */
+                      <View style={styles.audioBubbleContainer}>
+                        <Pressable
+                          onPress={() => handleTogglePlayAudio(item)}
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            isPlaying
+                              ? 'Pause voice message'
+                              : `Play voice message, duration ${formatAudioDuration(
+                                  item.audioDurationMs
+                                )}`
+                          }
+                          style={styles.audioPlayBtn}>
+                          <Ionicons
+                            name={isPlaying ? 'pause-circle' : 'play-circle'}
+                            size={38}
+                            color={mine ? Colors.dashboard.bg : Colors.dashboard.accent}
+                          />
+                        </Pressable>
+                        <View style={styles.audioMeta}>
+                          {/* Audio Waveform / Progress Bar */}
+                          <View style={styles.audioProgressTrack}>
+                            <View
+                              style={[
+                                styles.audioProgressFill,
+                                {
+                                  width:
+                                    isPlaying && playbackDurationMs > 0
+                                      ? `${Math.min(
+                                          100,
+                                          (playbackPositionMs / playbackDurationMs) * 100
+                                        )}%`
+                                      : '0%',
+                                  backgroundColor: mine
+                                    ? Colors.dashboard.bg
+                                    : Colors.dashboard.accent,
+                                },
+                              ]}
+                            />
+                          </View>
+                          <View style={styles.audioTimeRow}>
+                            <Text
+                              style={[
+                                styles.audioDurationText,
+                                mine ? styles.bubbleTextMine : styles.bubbleTextTheirs,
+                              ]}>
+                              {isPlaying
+                                ? formatAudioDuration(playbackPositionMs)
+                                : formatAudioDuration(item.audioDurationMs)}
+                            </Text>
+                            <Ionicons
+                              name="mic"
+                              size={12}
+                              color={
+                                mine
+                                  ? 'rgba(7, 31, 25, 0.65)'
+                                  : Colors.alpha.white55
+                              }
+                            />
+                          </View>
+                        </View>
+                      </View>
                     ) : (
-                      <Text style={[styles.bubbleText, mine ? styles.bubbleTextMine : styles.bubbleTextTheirs]}>
+                      /* Text Message */
+                      <Text
+                        style={[
+                          styles.bubbleText,
+                          mine ? styles.bubbleTextMine : styles.bubbleTextTheirs,
+                        ]}>
                         {item.text}
                       </Text>
                     )}
-                    <Text style={[styles.bubbleTime, mine ? styles.bubbleTimeMine : styles.bubbleTimeTheirs]}>
-                      {formatMessageTime(item.createdAt)}
-                    </Text>
+
+                    {!isImage && (
+                      <View style={styles.bubbleFooterRow}>
+                        {isPending ? (
+                          <Ionicons
+                            name="time-outline"
+                            size={12}
+                            color={mine ? 'rgba(7, 31, 25, 0.70)' : Colors.alpha.white45}
+                            accessibilityLabel="Sending..."
+                          />
+                        ) : (
+                          <>
+                            <Text
+                              style={[
+                                styles.bubbleTime,
+                                mine ? styles.bubbleTimeMine : styles.bubbleTimeTheirs,
+                              ]}>
+                              {formatMessageTime(item.createdAt)}
+                            </Text>
+                            {mine && (
+                              <Ionicons
+                                name="checkmark-done"
+                                size={12}
+                                color={
+                                  mine
+                                    ? 'rgba(7, 31, 25, 0.70)'
+                                    : Colors.alpha.white45
+                                }
+                                style={styles.statusCheck}
+                              />
+                            )}
+                          </>
+                        )}
+                      </View>
+                    )}
                   </View>
                 </View>
               );
@@ -274,45 +722,151 @@ export default function ConversationScreen() {
           </View>
         ) : null}
 
-        {/* Sticky Input Bar */}
-        <View style={styles.inputBar}>
-          <Pressable
-            onPress={handleVoiceNotePress}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Record voice note"
-            style={({ pressed }) => [styles.micBtn, { opacity: pressed ? 0.8 : 1 }]}>
-            <Ionicons name="mic-outline" size={22} color={Colors.alpha.white55} />
-          </Pressable>
+        {/* WhatsApp-Style Sticky Chat Input Bar */}
+        {isRecording ? (
+          /* Active Recording State Bar */
+          <View style={styles.recordingBar}>
+            <Pressable
+              onPress={handleCancelRecording}
+              accessibilityRole="button"
+              accessibilityLabel="Discard recording"
+              hitSlop={10}
+              style={({ pressed }) => [
+                styles.recordingDiscardBtn,
+                { opacity: pressed ? 0.75 : 1 },
+              ]}>
+              <Ionicons name="trash-outline" size={22} color="#EF4444" />
+            </Pressable>
 
-          <TextInput
-            value={text}
-            onChangeText={(val) => {
-              setText(val);
-              if (sendError && !failedText) setSendError(null);
-            }}
-            placeholder={relationshipId ? `Message ${recipientName}...` : 'Select a conversation to chat'}
-            placeholderTextColor={Colors.alpha.white28}
-            style={styles.input}
-            multiline
-            maxLength={500}
-            editable={Boolean(relationshipId)}
-            accessibilityLabel="Message Input"
-          />
+            <View style={styles.recordingCenter}>
+              <View style={styles.recordingPulseDot} />
+              <Text style={styles.recordingTimerText}>
+                {formatAudioDuration(recordingDurationMs)}
+              </Text>
+              <Text style={styles.recordingLabel}>Recording voice message...</Text>
+            </View>
 
-          <Pressable
-            onPress={() => handleSend()}
-            disabled={!text.trim() || sending || !relationshipId}
-            accessibilityRole="button"
-            accessibilityLabel="Send message"
-            style={({ pressed }) => [
-              styles.sendBtn,
-              (!text.trim() || sending || !relationshipId) && styles.sendBtnDisabled,
-              { opacity: pressed ? 0.85 : 1 },
-            ]}>
-            <Ionicons name="send" size={18} color={Colors.dashboard.bg} />
-          </Pressable>
-        </View>
+            <Pressable
+              onPress={handleSendVoiceRecording}
+              disabled={sending}
+              accessibilityRole="button"
+              accessibilityLabel="Send voice message"
+              style={({ pressed }) => [
+                styles.sendBtn,
+                { opacity: pressed ? 0.85 : 1 },
+              ]}>
+              {sending ? (
+                <ActivityIndicator size="small" color={Colors.dashboard.bg} />
+              ) : (
+                <Ionicons name="send" size={18} color={Colors.dashboard.bg} />
+              )}
+            </Pressable>
+          </View>
+        ) : (
+          /* Normal Message Input State */
+          <View style={styles.inputBar}>
+            {/* Image / Camera Button */}
+            <Pressable
+              onPress={handleImagePickerPress}
+              disabled={sending || !relationshipId}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Attach photo"
+              style={({ pressed }) => [
+                styles.attachBtn,
+                (!relationshipId || sending) && styles.btnDisabled,
+                { opacity: pressed ? 0.75 : 1 },
+              ]}>
+              <Ionicons name="camera-outline" size={23} color={Colors.dashboard.accent} />
+            </Pressable>
+
+            <TextInput
+              value={text}
+              onChangeText={(val) => {
+                setText(val);
+                if (sendError && !failedText) setSendError(null);
+              }}
+              placeholder={
+                relationshipId
+                  ? `Message ${recipientName}...`
+                  : 'Select a conversation to chat'
+              }
+              placeholderTextColor={Colors.alpha.white28}
+              style={styles.input}
+              multiline
+              maxLength={500}
+              editable={Boolean(relationshipId)}
+              accessibilityLabel="Message Input"
+            />
+
+            {/* Dynamic Action Button: Mic when empty, Send when has text */}
+            {hasText ? (
+              <Pressable
+                onPress={() => handleSend()}
+                disabled={!text.trim() || sending || !relationshipId}
+                accessibilityRole="button"
+                accessibilityLabel="Send message"
+                style={({ pressed }) => [
+                  styles.sendBtn,
+                  (!text.trim() || sending || !relationshipId) && styles.sendBtnDisabled,
+                  { opacity: pressed ? 0.85 : 1 },
+                ]}>
+                {sending ? (
+                  <ActivityIndicator size="small" color={Colors.dashboard.bg} />
+                ) : (
+                  <Ionicons name="send" size={18} color={Colors.dashboard.bg} />
+                )}
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={handleStartRecording}
+                disabled={sending || !relationshipId}
+                accessibilityRole="button"
+                accessibilityLabel="Record voice message"
+                style={({ pressed }) => [
+                  styles.sendBtn,
+                  (!relationshipId || sending) && styles.sendBtnDisabled,
+                  { opacity: pressed ? 0.85 : 1 },
+                ]}>
+                <Ionicons name="mic" size={20} color={Colors.dashboard.bg} />
+              </Pressable>
+            )}
+          </View>
+        )}
+
+        {/* Full-Screen Image Preview Modal */}
+        <Modal
+          visible={Boolean(previewImageUri)}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPreviewImageUri(null)}>
+          <View style={styles.modalBackdrop}>
+            <SafeAreaView style={styles.modalSafe} edges={['top', 'bottom']}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle} numberOfLines={1}>
+                  Photo • {recipientName}
+                </Text>
+                <Pressable
+                  onPress={() => setPreviewImageUri(null)}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close photo viewer"
+                  style={styles.modalCloseBtn}>
+                  <Ionicons name="close" size={24} color="#FFFFFF" />
+                </Pressable>
+              </View>
+              <View style={styles.modalImageWrapper}>
+                {previewImageUri ? (
+                  <Image
+                    source={{ uri: previewImageUri }}
+                    style={styles.modalImage}
+                    resizeMode="contain"
+                  />
+                ) : null}
+              </View>
+            </SafeAreaView>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -320,7 +874,8 @@ export default function ConversationScreen() {
 
 function formatMessageTime(ts: any) {
   if (!ts) return '';
-  const ms = typeof ts === 'object' && 'toMillis' in ts ? ts.toMillis() : new Date(ts).getTime();
+  const ms =
+    typeof ts === 'object' && 'toMillis' in ts ? ts.toMillis() : new Date(ts).getTime();
   if (!ms || Number.isNaN(ms)) return '';
   const d = new Date(ms);
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -440,11 +995,17 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   bubble: {
-    maxWidth: '78%',
+    maxWidth: '82%',
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 10,
     gap: 4,
+  },
+  bubbleImageContainer: {
+    paddingHorizontal: 4,
+    paddingTop: 4,
+    paddingBottom: 4,
+    overflow: 'hidden',
   },
   bubbleMine: {
     backgroundColor: Colors.dashboard.accent,
@@ -467,10 +1028,16 @@ const styles = StyleSheet.create({
   bubbleTextTheirs: {
     color: Colors.dashboard.text,
   },
+  bubbleFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    gap: 4,
+    marginTop: 2,
+  },
   bubbleTime: {
     fontSize: 10,
     fontWeight: '700',
-    alignSelf: 'flex-end',
   },
   bubbleTimeMine: {
     color: 'rgba(7, 31, 25, 0.65)',
@@ -478,33 +1045,80 @@ const styles = StyleSheet.create({
   bubbleTimeTheirs: {
     color: Colors.alpha.white45,
   },
-  audioRow: {
+  statusCheck: {
+    marginLeft: 1,
+  },
+  // Image Message styling
+  imageWrapper: {
+    width: 230,
+    height: 230,
+    borderRadius: 14,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: 'rgba(0,0,0,0.15)',
+  },
+  chatImage: {
+    width: '100%',
+    height: '100%',
+  },
+  imageOverlayTime: {
+    position: 'absolute',
+    bottom: 6,
+    right: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 3,
+  },
+  imageTimeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  // Audio message styling
+  audioBubbleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: 210,
     gap: 10,
+    paddingVertical: 2,
+  },
+  audioPlayBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   audioMeta: {
     flex: 1,
-    gap: 2,
+    gap: 6,
   },
-  audioDuration: {
-    fontSize: 14,
+  audioProgressTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0, 0, 0, 0.15)',
+    overflow: 'hidden',
+    width: '100%',
+  },
+  audioProgressFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  audioTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  audioDurationText: {
+    fontSize: 12,
     fontWeight: '700',
-  },
-  audioHint: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  audioHintMine: {
-    color: 'rgba(7, 31, 25, 0.70)',
-  },
-  audioHintTheirs: {
-    color: Colors.alpha.white55,
   },
   errorBannerWrap: {
     paddingHorizontal: 14,
     paddingBottom: 6,
   },
+  // Input bar styling
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -516,7 +1130,7 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.alpha.white08,
     gap: 10,
   },
-  micBtn: {
+  attachBtn: {
     width: 42,
     height: 42,
     borderRadius: 21,
@@ -552,5 +1166,91 @@ const styles = StyleSheet.create({
   sendBtnDisabled: {
     opacity: 0.35,
   },
+  btnDisabled: {
+    opacity: 0.35,
+  },
+  // WhatsApp-style Recording Bar styling
+  recordingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 14,
+    backgroundColor: Colors.dashboard.surfaceStrong,
+    borderTopWidth: 1,
+    borderTopColor: Colors.alpha.white08,
+    gap: 12,
+  },
+  recordingDiscardBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordingCenter: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  recordingPulseDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#EF4444',
+  },
+  recordingTimerText: {
+    color: '#EF4444',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  recordingLabel: {
+    color: Colors.alpha.white70,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  // Modal Preview
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.94)',
+  },
+  modalSafe: {
+    flex: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  modalTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalImageWrapper: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+  },
+  modalImage: {
+    width: '100%',
+    height: '100%',
+  },
 });
-

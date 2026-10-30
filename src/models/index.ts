@@ -89,7 +89,7 @@ export const ESCALATION_CONFIG = {
 } as const;
 
 export type MessageStatus = 'sent' | 'delivered' | 'read';
-export type MessageType = 'text' | 'audio';
+export type MessageType = 'text' | 'audio' | 'image';
 
 export type Message = {
   id: string;
@@ -97,6 +97,7 @@ export type Message = {
   senderId: string;
   text: string;
   messageType?: MessageType;
+  imageUrl?: string;
   audioUrl?: string;
   audioDurationMs?: number;
   status: MessageStatus;

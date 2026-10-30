@@ -1173,6 +1173,35 @@ describe('conversations and messages collections', () => {
     );
   });
 
+  it('allows a participant to send an image message', async () => {
+    await assertSucceeds(
+      dbFor(PARENT).collection('messages').add({
+        conversationId: REL_ID,
+        senderId: PARENT,
+        text: '📷 Photo',
+        messageType: 'image',
+        imageUrl: 'https://example.com/photo.jpg',
+        status: 'sent',
+        createdAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it('allows a participant to send an audio voice note message', async () => {
+    await assertSucceeds(
+      dbFor(PARENT).collection('messages').add({
+        conversationId: REL_ID,
+        senderId: PARENT,
+        text: '🎤 Voice message',
+        messageType: 'audio',
+        audioUrl: 'https://example.com/audio.m4a',
+        audioDurationMs: 5000,
+        status: 'sent',
+        createdAt: serverTimestamp(),
+      })
+    );
+  });
+
   it('denies impersonating another sender', async () => {
     await assertFails(
       dbFor(PARENT).collection('messages').add({

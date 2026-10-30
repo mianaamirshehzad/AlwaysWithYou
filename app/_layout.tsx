@@ -4,16 +4,21 @@ import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as React from 'react';
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/src/assets/Colors';
 import { StatusBar } from 'expo-status-bar';
+import * as Notifications from 'expo-notifications';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
+import { UserProfileProvider } from '../src/context/UserProfileContext';
 import { RelationshipsProvider, useRelationships } from '../src/context/RelationshipsContext';
 import { PreferencesProvider } from '../src/context/PreferencesContext';
+import { NetworkProvider, useNetwork } from '../src/context/NetworkContext';
+import NoInternetScreen from '../src/components/NoInternetScreen';
+import NotificationPermissionGate from '../src/components/NotificationPermissionGate';
 import { logOut } from '../src/services/auth';
 
 export {
@@ -60,11 +65,15 @@ function RootLayoutNav() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <StatusBar style="light" />
       <AuthProvider>
-        <PreferencesProvider>
-          <RelationshipsProvider>
-            <RootNavigator />
-          </RelationshipsProvider>
-        </PreferencesProvider>
+        <UserProfileProvider>
+          <PreferencesProvider>
+            <RelationshipsProvider>
+              <NetworkProvider>
+                <RootNavigator />
+              </NetworkProvider>
+            </RelationshipsProvider>
+          </PreferencesProvider>
+        </UserProfileProvider>
       </AuthProvider>
     </ThemeProvider>
   );
@@ -73,8 +82,31 @@ function RootLayoutNav() {
 function RootNavigator() {
   const { status, role, roleError, retryLoadRole, hasConnected } = useAuth();
   const { relationships, loading: relationshipsLoading } = useRelationships();
+  const { isConnected, checkConnectivity } = useNetwork();
+  const [hasNotificationPermission, setHasNotificationPermission] = React.useState<boolean>(true);
   const router = useRouter();
   const segments = useSegments();
+
+  // Enforce notification permissions check
+  React.useEffect(() => {
+    Notifications.getPermissionsAsync()
+      .then((perm) => {
+        if (perm.granted || perm.status === 'granted') {
+          setHasNotificationPermission(true);
+        } else {
+          Notifications.requestPermissionsAsync()
+            .then((req) => {
+              setHasNotificationPermission(req.granted || req.status === 'granted');
+            })
+            .catch(() => {
+              setHasNotificationPermission(false);
+            });
+        }
+      })
+      .catch(() => {
+        setHasNotificationPermission(true);
+      });
+  }, []);
 
   const isParentLinked = React.useMemo(() => {
     return relationships.some((r) => r.status === 'active');
@@ -146,6 +178,10 @@ function RootNavigator() {
 
       {showLoadingGate ? <AuthGateLoading /> : null}
       {roleError ? <AuthGateError onRetry={retryLoadRole} /> : null}
+      {!hasNotificationPermission ? (
+        <NotificationPermissionGate onPermissionGranted={() => setHasNotificationPermission(true)} />
+      ) : null}
+      {!isConnected ? <NoInternetScreen onRetry={checkConnectivity} /> : null}
     </>
   );
 }

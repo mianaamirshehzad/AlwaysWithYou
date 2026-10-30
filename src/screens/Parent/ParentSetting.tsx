@@ -17,6 +17,7 @@ import ParentProfileModal from '../../components/ParentSettings/ParentProfileMod
 import { useAuth } from '../../context/AuthContext';
 import { usePreferences } from '../../context/PreferencesContext';
 import { useRelationships } from '../../context/RelationshipsContext';
+import { useUserProfile } from '../../context/UserProfileContext';
 import { getUserProfile } from '../../services/firestore/users';
 import { logOut } from '../../services/auth';
 import { openLegalDocument } from '../../constants/legal';
@@ -28,10 +29,9 @@ export default function ParentSetting() {
   const { user } = useAuth();
   const { preferences, update, saveError, retrySave } = usePreferences();
   const { relationships } = useRelationships();
+  const { profile, loading: loadingProfile, updateProfile } = useUserProfile();
 
-  const [profile, setProfile] = React.useState<UserProfile | null>(null);
   const [childProfile, setChildProfile] = React.useState<UserProfile | null>(null);
-  const [loadingProfile, setLoadingProfile] = React.useState(true);
   const [loggingOut, setLoggingOut] = React.useState(false);
   const [callModalOpen, setCallModalOpen] = React.useState(false);
   const [profileModalOpen, setProfileModalOpen] = React.useState(false);
@@ -41,23 +41,6 @@ export default function ParentSetting() {
       setProfileModalOpen(true);
     }
   }, [params.editProfile]);
-
-  React.useEffect(() => {
-    if (!user) return;
-    let mounted = true;
-    setLoadingProfile(true);
-
-    getUserProfile(user.uid).then((p) => {
-      if (mounted) {
-        setProfile(p);
-        setLoadingProfile(false);
-      }
-    }).catch(() => {
-      if (mounted) setLoadingProfile(false);
-    });
-
-    return () => { mounted = false; };
-  }, [user]);
 
   React.useEffect(() => {
     if (relationships.length === 0) return;
@@ -204,16 +187,11 @@ export default function ParentSetting() {
             initialPhotoUrl={profile?.photoUrl}
             onClose={() => setProfileModalOpen(false)}
             onSaved={(newName, newPhone, newPhotoUrl) => {
-              setProfile((p) =>
-                p
-                  ? {
-                      ...p,
-                      name: newName,
-                      phone: newPhone,
-                      ...(newPhotoUrl !== undefined ? { photoUrl: newPhotoUrl } : {}),
-                    }
-                  : p
-              );
+              void updateProfile({
+                name: newName,
+                phone: newPhone,
+                ...(newPhotoUrl !== undefined ? { photoUrl: newPhotoUrl } : {}),
+              });
             }}
           />
         ) : null}
