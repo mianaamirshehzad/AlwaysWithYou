@@ -1,4 +1,4 @@
-import { formatTime12h, todayString, formatDateLong, getInitials, timeToMinutes, minutesToTime } from '../utils/date';
+import { formatTime12h, todayString, formatDateLong, getInitials, timeToMinutes, minutesToTime, formatConversationTime } from '../utils/date';
 
 describe('formatTime12h', () => {
   it('formats morning time', () => {
@@ -66,5 +66,31 @@ describe('minutesToTime', () => {
   });
   it('converts 65 to 01:05', () => {
     expect(minutesToTime(65)).toBe('01:05');
+  });
+});
+
+describe('formatConversationTime', () => {
+  it('returns empty string for null or undefined', () => {
+    expect(formatConversationTime(null)).toBe('');
+    expect(formatConversationTime(undefined)).toBe('');
+  });
+
+  it('formats time for today', () => {
+    const now = new Date();
+    const formatted = formatConversationTime(now.getTime());
+    expect(formatted).toMatch(/(AM|PM)/);
+  });
+
+  it('formats yesterday for previous day', () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    expect(formatConversationTime(yesterday.getTime())).toBe('Yesterday');
+  });
+
+  it('supports Firestore toMillis() timestamp objects', () => {
+    const now = new Date();
+    const mockTimestamp = { toMillis: () => now.getTime() };
+    const formatted = formatConversationTime(mockTimestamp);
+    expect(formatted).toMatch(/(AM|PM)/);
   });
 });

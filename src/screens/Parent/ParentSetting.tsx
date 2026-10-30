@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as React from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,7 +24,6 @@ import type { UserProfile } from '../../models';
 
 export default function ParentSetting() {
   const router = useRouter();
-  const navigation = useNavigation();
   const params = useLocalSearchParams<{ editProfile?: string }>();
   const { user } = useAuth();
   const { preferences, update, saveError, retrySave } = usePreferences();
@@ -99,19 +98,6 @@ export default function ParentSetting() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.screen}>
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => (navigation.canGoBack() ? navigation.goBack() : router.replace('/(parent-tabs)'))}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            hitSlop={12}
-            style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.9 : 1 }]}>
-            <Ionicons name="arrow-back" size={18} color={Colors.alpha.white85} />
-          </Pressable>
-          <Text style={styles.headerTitle}>Profile</Text>
-          <View style={{ width: 42 }} />
-        </View>
-
         {loadingProfile ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="large" color={Colors.dashboard.accent} />
@@ -239,28 +225,7 @@ export default function ParentSetting() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.dashboard.bg },
   screen: { flex: 1 },
-  header: {
-    paddingHorizontal: 18,
-    paddingTop: 6,
-    paddingBottom: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.dashboard.bg,
-    zIndex: 10,
-  },
-  backBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 999,
-    backgroundColor: Colors.dashboard.surface,
-    borderWidth: 1,
-    borderColor: Colors.alpha.white08,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: { color: Colors.dashboard.text, fontSize: 16, fontWeight: '900' },
-  content: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 28, gap: 16 },
+  content: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 28, gap: 16 },
 
   loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 

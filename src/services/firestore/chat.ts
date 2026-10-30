@@ -141,9 +141,76 @@ export async function getLastMessages(
     .reverse();
 }
 
-export async function getConversation(relationshipId: string): Promise<any | null> {
+export type Conversation = {
+  id: string;
+  relationshipId: string;
+  createdAt?: any;
+  lastMessage?: string;
+  lastMessageAt?: any;
+};
+
+export async function getConversation(relationshipId: string): Promise<Conversation | null> {
   const db = getFirebaseDb();
   const snap = await getDoc(doc(db, CONVERSATIONS_COLLECTION, relationshipId));
   if (!snap.exists()) return null;
-  return { id: snap.id, relationshipId };
+  return { id: snap.id, relationshipId, ...snap.data() } as Conversation;
+}
+
+export function subscribeToConversation(
+  relationshipId: string,
+  callback: (conversation: Conversation | null) => void,
+  onError?: (error: Error) => void
+): () => void {
+  const db = getFirebaseDb();
+  return onSnapshot(
+    doc(db, CONVERSATIONS_COLLECTION, relationshipId),
+    (snap) => {
+      if (!snap.exists()) {
+        callback(null);
+      } else {
+        callback({ id: snap.id, relationshipId, ...snap.data() } as Conversation);
+      }
+    },
+    (error) => {
+      console.error('subscribeToConversation error:', error);
+      if (onError) onError(error);
+    }
+  );
+}
+
+export function subscribeToConversations(
+  relationshipIds: string[],
+  callback: (conversationsMap: Map<string, Conversation>) => void,
+  onError?: (error: Error) => void
+): () => void {
+  if (relationshipIds.length === 0) {
+    callback(new Map());
+    return () => {};
+  }
+  const db = getFirebaseDb();
+  const conversationsMap = new Map<string, Conversation>();
+  const unsubs: (() => void)[] = [];
+
+  for (const relId of relationshipIds) {
+    const unsub = onSnapshot(
+      doc(db, CONVERSATIONS_COLLECTION, relId),
+      (snap) => {
+        if (snap.exists()) {
+          conversationsMap.set(relId, { id: snap.id, relationshipId: relId, ...snap.data() } as Conversation);
+        } else {
+          conversationsMap.delete(relId);
+        }
+        callback(new Map(conversationsMap));
+      },
+      (err) => {
+        console.warn(`subscribeToConversations error for ${relId}:`, err);
+        if (onError) onError(err);
+      }
+    );
+    unsubs.push(unsub);
+  }
+
+  return () => {
+    unsubs.forEach((u) => u());
+  };
 }

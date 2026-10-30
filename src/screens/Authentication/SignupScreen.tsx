@@ -76,8 +76,8 @@ export default function SignupScreen() {
             <Ionicons name="chevron-back" size={20} color={PALETTE.text} />
           </Pressable>
 
-          <Text style={styles.headerKicker}>SIGN UP</Text>
-          <View style={{ width: 40 }} />
+          {/* <Text style={styles.headerKicker}>SIGN UP</Text>
+          <View style={{ width: 40 }} /> */}
         </View>
 
         <View style={styles.content}>
@@ -164,10 +164,10 @@ export default function SignupScreen() {
         </View>
 
         <View style={styles.footer}>
-          <View style={styles.circle}>
+          {/* <View style={styles.circle}>
             <Image source={Images.hands} style={styles.circleImage} resizeMode="cover" />
             <View style={styles.circleOverlay} />
-          </View>
+          </View> */}
 
           {formError ? <Text style={styles.formError}>{formError}</Text> : null}
 

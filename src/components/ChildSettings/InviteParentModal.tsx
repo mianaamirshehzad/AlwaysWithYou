@@ -4,6 +4,7 @@ import * as React from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import childSettingsColors from './colors';
+import Colors from '@/src/assets/Colors';
 
 type Props = {
   visible: boolean;
@@ -81,7 +82,7 @@ export default function InviteParentModal(props: Props) {
                 accessibilityRole="button"
                 accessibilityLabel="Copy Code"
                 style={({ pressed }) => [styles.copyBtn, { opacity: pressed ? 0.85 : 1 }]}>
-                <Ionicons name={copied ? 'checkmark-circle-outline' : 'copy-outline'} size={18} color={childSettingsColors.white} />
+                <Ionicons name={copied ? 'checkmark-circle-outline' : 'copy-outline'} size={18} color={Colors.dashboard.bg} />
                 <Text style={styles.copyText}>{copied ? 'Copied!' : 'Copy Code'}</Text>
               </Pressable>
             </>
@@ -103,14 +104,16 @@ export default function InviteParentModal(props: Props) {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 18, 24, 0.45)',
+    backgroundColor: 'rgba(0, 0, 0, 0.70)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 28,
   },
   card: {
     width: '100%',
-    backgroundColor: childSettingsColors.card,
+    backgroundColor: Colors.dashboard.surfaceStrong,
+    borderWidth: 1,
+    borderColor: Colors.dashboard.border,
     borderRadius: 28,
     paddingHorizontal: 24,
     paddingTop: 12,
@@ -122,7 +125,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 999,
-    backgroundColor: childSettingsColors.divider,
+    backgroundColor: Colors.alpha.white25,
   },
   iconCircle: {
     width: 52,
@@ -156,8 +159,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: childSettingsColors.accent,
   },
-  retryText: { color: childSettingsColors.white, fontSize: 13, fontWeight: '800' },
-  codeRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  retryText: { color: Colors.dashboard.bg, fontSize: 13, fontWeight: '900' },
+  codeRow: { flexDirection: 'row', gap: 2, marginTop: 4 },
   codeBox: {
     width: 46,
     height: 58,
@@ -181,7 +184,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  copyText: { color: childSettingsColors.white, fontSize: 15, fontWeight: '800' },
+  copyText: { color: Colors.dashboard.bg, fontSize: 15, fontWeight: '900' },
   closeBtn: {
     paddingVertical: 10,
     paddingHorizontal: 24,

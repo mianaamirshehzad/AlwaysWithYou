@@ -91,7 +91,7 @@ function InviteCodeEntry(props: { value: string; onChange: (code: string) => voi
           accessibilityLabel={`Code digit ${i + 1}`}
         />
       ))}
-      <Text style={styles.dash}>–</Text>
+      {/* <Text style={styles.dash}>–</Text> */}
       {[3, 4, 5].map((i) => (
         <TextInput
           key={i}
@@ -128,6 +128,15 @@ export default function InviteCodeLinkingScreen() {
   const [childCode, setChildCode] = React.useState<string | null>(null);
   const [loadingCode, setLoadingCode] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const redirectTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+      }
+    };
+  }, []);
 
   const isParentLinked = React.useMemo(() => {
     return relationships.some((r) => r.status === 'active');
@@ -164,8 +173,10 @@ export default function InviteCodeLinkingScreen() {
       await setHasConnected(true);
       await refresh();
       setSuccess(true);
-      setTimeout(() => {
-        router.dismissAll();
+      redirectTimerRef.current = setTimeout(() => {
+        if (router.canDismiss()) {
+          router.dismissAll();
+        }
         router.replace('/(parent-tabs)');
       }, 1200);
     } catch (err: any) {
@@ -213,7 +224,7 @@ export default function InviteCodeLinkingScreen() {
             accessibilityLabel={user && role === 'parent' && !isParentLinked ? 'Sign Out' : 'Back'}>
             <Ionicons name="arrow-back" size={22} color={PALETTE.text} />
           </Pressable>
-          <Text style={styles.headerTitle}>ConnectFamily</Text>
+          <Text style={styles.headerTitle}>Connect Family</Text>
           {user ? (
             <Pressable
               onPress={async () => {
@@ -260,12 +271,12 @@ export default function InviteCodeLinkingScreen() {
 
             <Pressable
               onPress={() =>
-                Alert.alert('Where do I find my code?', 'Ask your family member to open their app and share the Invite Code with you.')
+                Alert.alert('Where do I find my code?', 'Ask your family member to open their app -> Go to Profile -> Add New Parent -> Copy and share the Invite Code with you.')
               }
               style={({ pressed }) => [styles.helper, { opacity: pressed ? 0.9 : 1 }]}
               accessibilityRole="button">
               <Text style={styles.helperText}>Where do I find my code?</Text>
-              <Ionicons name="arrow-forward" size={18} color={PALETTE.muted} />
+              {/* <Ionicons name="arrow-forward" size={18} color={PALETTE.muted} /> */}
             </Pressable>
 
             <View style={styles.ctaWrap}>
@@ -359,7 +370,7 @@ const styles = StyleSheet.create({
   h1: { color: PALETTE.text, fontSize: 34, lineHeight: 42, fontWeight: '800', marginTop: 6 },
   p: { color: PALETTE.muted, fontSize: 14, lineHeight: 20, textAlign: 'center', paddingHorizontal: 18 },
 
-  codeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 6 },
+  codeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 6},
   codeBox: {
     width: 46,
     height: 56,
@@ -378,15 +389,15 @@ const styles = StyleSheet.create({
     marginTop: 6,
     paddingVertical: 12,
     paddingHorizontal: 18,
-    borderRadius: 999,
-    backgroundColor: Colors.alpha.white06,
-    borderWidth: 1,
+    // borderRadius: 999,
+    // backgroundColor: Colors.alpha.white06,
+    // borderWidth: 1,
     borderColor: PALETTE.chipBorder,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  helperText: { color: PALETTE.muted, fontSize: 14, fontWeight: '700' },
+  helperText: { color: PALETTE.muted, fontSize: 10 },
 
   ctaWrap: { marginTop: 10 },
 

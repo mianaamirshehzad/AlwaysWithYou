@@ -4,6 +4,7 @@ import type { ImageSourcePropType } from 'react-native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import childSettingsColors from './colors';
+import Colors from '@/src/assets/Colors';
 import { getInitials } from '@/src/utils/date';
 
 type Props = {
@@ -38,7 +39,7 @@ export default function ChildProfileCard(props: Props) {
           accessibilityLabel="Edit profile picture"
           hitSlop={6}
           style={({ pressed }) => [styles.editBadge, { opacity: pressed ? 0.9 : 1 }]}>
-          <Ionicons name="camera" size={13} color={childSettingsColors.white} />
+          <Ionicons name="camera" size={13} color={Colors.dashboard.bg} />
         </Pressable>
       </View>
 
@@ -79,7 +80,7 @@ export default function ChildProfileCard(props: Props) {
         accessibilityRole="button"
         accessibilityLabel="Edit Profile"
         style={({ pressed }) => [styles.editBtn, { opacity: pressed ? 0.92 : 1 }]}>
-        <Ionicons name="pencil" size={15} color={childSettingsColors.white} />
+        <Ionicons name="pencil" size={15} color={Colors.dashboard.bg} />
         <Text style={styles.editBtnText}>Edit Profile</Text>
       </Pressable>
     </View>
@@ -110,22 +111,17 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
-    borderWidth: 3,
-    borderColor: childSettingsColors.white,
-    backgroundColor: childSettingsColors.divider,
-    shadowColor: childSettingsColors.black,
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    borderWidth: 2,
+    borderColor: Colors.dashboard.accentSoftBorder,
+    backgroundColor: Colors.dashboard.surfaceStrong,
   },
   avatarFallback: {
     width: 90,
     height: 90,
     borderRadius: 45,
-    borderWidth: 3,
-    borderColor: childSettingsColors.white,
-    backgroundColor: childSettingsColors.accentSoft,
+    borderWidth: 2,
+    borderColor: Colors.dashboard.accentSoftBorder,
+    backgroundColor: Colors.dashboard.accentSoftBg,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -142,8 +138,8 @@ const styles = StyleSheet.create({
     height: 30,
     borderRadius: 15,
     backgroundColor: childSettingsColors.accent,
-    borderWidth: 2.5,
-    borderColor: childSettingsColors.white,
+    borderWidth: 2,
+    borderColor: Colors.dashboard.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -168,10 +164,10 @@ const styles = StyleSheet.create({
   },
   detailsBox: {
     width: '100%',
-    backgroundColor: childSettingsColors.background,
+    backgroundColor: Colors.dashboard.surfaceStrong,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: childSettingsColors.border,
+    borderColor: Colors.alpha.white08,
     paddingHorizontal: 14,
     paddingVertical: 10,
     gap: 10,
@@ -223,8 +219,8 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   editBtnText: {
-    color: childSettingsColors.white,
+    color: Colors.dashboard.bg,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '900',
   },
 });

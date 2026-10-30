@@ -47,7 +47,9 @@ export default function LoginScreen() {
         setFormError('This account has not been set up yet. Please create an account instead.');
         return;
       }
-      router.dismissAll();
+      if (router.canDismiss()) {
+        router.dismissAll();
+      }
       if (role === 'parent') {
         const rels = await getRelationshipsForParent(user.uid);
         const hasActiveRel = rels.some((r) => r.status === 'active');
@@ -66,17 +68,17 @@ export default function LoginScreen() {
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Pressable
+          {/* <Pressable
             onPress={() => (navigation.canGoBack() ? navigation.goBack() : router.replace('/'))}
             hitSlop={10}
             accessibilityRole="button"
             accessibilityLabel="Back"
             style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.9 : 1 }]}>
             <Ionicons name="chevron-back" size={20} color={PALETTE.text} />
-          </Pressable>
+          </Pressable> */}
 
-          <Text style={styles.headerKicker}>LOGIN</Text>
-          <View style={{ width: 40 }} />
+          {/* <Text style={styles.headerKicker}>LOGIN</Text>
+          <View style={{ width: 40 }} /> */}
         </View>
 
         <View style={styles.content}>
@@ -115,10 +117,10 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.footer}>
-          <View style={styles.circle}>
+          {/* <View style={styles.circle}>
             <Image source={Images.hands} style={styles.circleImage} resizeMode="cover" />
             <View style={styles.circleOverlay} />
-          </View>
+          </View> */}
 
           {formError ? <Text style={styles.formError}>{formError}</Text> : null}
 

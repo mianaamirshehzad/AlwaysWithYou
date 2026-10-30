@@ -51,20 +51,38 @@ describe('Chat Feature & Bottom Tab Keyboard Hiding', () => {
   });
 
   describe('Chat Screens Structure', () => {
-    it('verifies ChildChatScreen anchors input to bottom with KeyboardAvoidingView offset 0 and flex container', () => {
+    it('verifies ChildChatScreen lists previous chatters, offers start chat option, and does not directly render message input', () => {
       const screenPath = path.resolve(__dirname, '../screens/Child/ChildChatScreen.tsx');
       const content = fs.readFileSync(screenPath, 'utf8');
 
-      expect(content).toContain('keyboardVerticalOffset={Platform.OS === \'ios\' ? 0 : 0}');
-      expect(content).toContain('loadingContainer:');
-      expect(content).toContain('listContentEmpty:');
-      expect(content).toContain('ListEmptyComponent=');
-      expect(content).toContain('Keyboard.dismiss');
-      expect(content).toContain('disabled={!text.trim() || sending || !relationshipId}');
+      // Does not directly allow chat input or send buttons on this screen
+      expect(content).not.toContain('<TextInput');
+      expect(content).not.toContain('keyboardVerticalOffset=');
+
+      // Lists previous chatters and provides option to start chat
+      expect(content).toContain('Previous Chats');
+      expect(content).toContain('previousChatters');
+      expect(content).toContain('availableParents');
+      expect(content).toContain('pathname: \'/conversation\'');
     });
 
-    it('verifies ParentChatScreen anchors input to bottom with KeyboardAvoidingView offset 0 and flex container', () => {
+    it('verifies ParentChatScreen lists previous chatters, offers start chat option, and does not directly render message input', () => {
       const screenPath = path.resolve(__dirname, '../screens/Parent/ParentChatScreen.tsx');
+      const content = fs.readFileSync(screenPath, 'utf8');
+
+      // Does not directly allow chat input or send buttons on this screen
+      expect(content).not.toContain('<TextInput');
+      expect(content).not.toContain('keyboardVerticalOffset=');
+
+      // Lists previous chatters and provides option to start chat
+      expect(content).toContain('Previous Chats');
+      expect(content).toContain('previousChatters');
+      expect(content).toContain('availableCaregivers');
+      expect(content).toContain('pathname: \'/conversation\'');
+    });
+
+    it('verifies dedicated ConversationScreen anchors input to bottom with KeyboardAvoidingView offset 0 and flex container', () => {
+      const screenPath = path.resolve(__dirname, '../screens/Chat/ConversationScreen.tsx');
       const content = fs.readFileSync(screenPath, 'utf8');
 
       expect(content).toContain('keyboardVerticalOffset={Platform.OS === \'ios\' ? 0 : 0}');
@@ -73,6 +91,15 @@ describe('Chat Feature & Bottom Tab Keyboard Hiding', () => {
       expect(content).toContain('ListEmptyComponent=');
       expect(content).toContain('Keyboard.dismiss');
       expect(content).toContain('disabled={!text.trim() || sending || !relationshipId}');
+      expect(content).toContain('accessibilityLabel="Back to chats"');
+    });
+
+    it('verifies app/_layout.tsx registers conversation screen and includes it in auth navigation', () => {
+      const layoutPath = path.resolve(__dirname, '../../app/_layout.tsx');
+      const content = fs.readFileSync(layoutPath, 'utf8');
+
+      expect(content).toContain('<Stack.Screen name="conversation" options={{ headerShown: false }} />');
+      expect(content).toContain('segments[0] !== \'conversation\'');
     });
   });
 

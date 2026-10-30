@@ -1,16 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useRouter } from 'expo-router';
 import * as React from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
+  Image,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,397 +16,507 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Colors from '@/src/assets/Colors';
 import EmptyState from '@/src/components/EmptyState';
 import ErrorBanner from '@/src/components/ErrorBanner';
-import { useAuth } from '@/src/context/AuthContext';
-import { useSelectedParent } from '@/src/context/RelationshipsContext';
-import { subscribeToMessages, sendMessageWithRetry } from '@/src/services/firestore/chat';
-import { checkVoiceNoteSupport, formatAudioDuration, playAudioNote } from '@/src/services/voiceNotes';
-import { getInitials } from '@/src/utils/date';
-import type { Message } from '@/src/models';
+import InviteParentModal from '@/src/components/ChildSettings/InviteParentModal';
+import { useRelationships } from '@/src/context/RelationshipsContext';
+import { subscribeToConversations, type Conversation } from '@/src/services/firestore/chat';
+import { createInvitation } from '@/src/services/firestore/invitations';
+import { getCurrentUser } from '@/src/services/auth';
+import { formatConversationTime, getInitials } from '@/src/utils/date';
+import type { ParentProfile } from '@/src/context/RelationshipsContext';
 
-export default function ChatScreen() {
-  const { user } = useAuth();
-  const { selectedParent } = useSelectedParent();
-  const [messages, setMessages] = React.useState<Message[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [text, setText] = React.useState('');
-  const [sending, setSending] = React.useState(false);
-  const [sendError, setSendError] = React.useState<string | null>(null);
-  const [failedText, setFailedText] = React.useState<string | null>(null);
+export default function ChildChatScreen() {
+  const router = useRouter();
+  const { parents, loading: relsLoading, error: relsError, refresh } = useRelationships();
 
-  const relationshipId = selectedParent?.relationship.id ?? null;
-  const listRef = React.useRef<FlatList<Message>>(null);
+  const [conversationsMap, setConversationsMap] = React.useState<Map<string, Conversation>>(new Map());
+  const [inviteVisible, setInviteVisible] = React.useState(false);
+  const [inviteCode, setInviteCode] = React.useState<string | null>(null);
+  const [inviteError, setInviteError] = React.useState<string | null>(null);
+  const [inviting, setInviting] = React.useState(false);
 
+  // Subscribe in real-time to conversations for all connected parents
   React.useEffect(() => {
-    if (!relationshipId) {
-      setMessages([]);
-      setLoading(false);
+    if (parents.length === 0) {
+      setConversationsMap(new Map());
       return;
     }
-    setLoading(true);
-    const unsubscribe = subscribeToMessages(
-      relationshipId,
-      (msgs) => {
-        setMessages(msgs);
-        setLoading(false);
-      },
-      100,
-      (err) => {
-        setSendError('Failed to synchronize messages with the server.');
-        setLoading(false);
-      }
-    );
+    const relIds = parents.map((p) => p.relationship.id);
+    const unsubscribe = subscribeToConversations(relIds, (map) => {
+      setConversationsMap(map);
+    });
     return unsubscribe;
-  }, [relationshipId]);
+  }, [parents]);
 
-  const parentName = selectedParent?.profile?.name ?? 'Parent';
-
-  const handleSend = async (textToSend?: string) => {
-    const candidate = (textToSend ?? text).trim();
-    if (!candidate || !user || !relationshipId || sending) return;
-
-    if (!textToSend) {
-      setText('');
-    }
-    setSending(true);
-    setSendError(null);
-    setFailedText(null);
-
+  const generateInvitation = async (childUid: string) => {
+    setInviting(true);
+    setInviteError(null);
+    setInviteCode(null);
     try {
-      await sendMessageWithRetry(relationshipId, user.uid, candidate);
-    } catch (err: any) {
-      setFailedText(candidate);
-      setSendError(err?.message ?? 'Failed to deliver message. Tap to retry.');
-      if (!textToSend) {
-        setText(candidate);
-      }
+      const code = await createInvitation(childUid);
+      setInviteCode(code);
+    } catch (error) {
+      setInviteError(
+        error instanceof Error ? error.message : 'Unable to generate an invitation code. Please try again.'
+      );
     } finally {
-      setSending(false);
+      setInviting(false);
     }
   };
 
-  const handleVoiceNotePress = () => {
-    const support = checkVoiceNoteSupport();
-    Alert.alert(
-      'Voice Notes Not Configured',
-      `${support.reason ?? 'Voice messages require the expo-audio library and cloud storage.'}\n\nText messages are fully operational.`,
-      [{ text: 'OK' }]
-    );
+  const handleOpenInvite = () => {
+    const current = getCurrentUser();
+    if (current) {
+      setInviteVisible(true);
+      void generateInvitation(current.uid);
+    }
   };
 
-  const handlePlayAudio = (item: Message) => {
-    if (!item.audioUrl) {
-      Alert.alert('Audio Unavailable', 'No audio recording found for this message.');
-      return;
-    }
-    playAudioNote(item.audioUrl).catch((err) => {
-      Alert.alert('Playback Unsupported', err.message);
+  const handleOpenConversation = (parent: ParentProfile) => {
+    router.push({
+      pathname: '/conversation',
+      params: {
+        relationshipId: parent.relationship.id,
+        name: parent.profile?.name ?? 'Parent',
+        recipientRole: 'parent',
+        photoUrl: parent.profile?.photoUrl ?? '',
+      },
     });
   };
 
+  // Separate parents into previous chatters (conversations with messages)
+  // and available contacts (no messages sent yet)
+  const { previousChatters, availableParents } = React.useMemo(() => {
+    const chatters: { parent: ParentProfile; conversation: Conversation }[] = [];
+    const available: ParentProfile[] = [];
+
+    for (const p of parents) {
+      const conv = conversationsMap.get(p.relationship.id);
+      if (conv && conv.lastMessage) {
+        chatters.push({ parent: p, conversation: conv });
+      } else {
+        available.push(p);
+      }
+    }
+
+    // Sort previous chatters by most recent message timestamp descending
+    chatters.sort((a, b) => {
+      const timeA = getTimestampMs(a.conversation.lastMessageAt);
+      const timeB = getTimestampMs(b.conversation.lastMessageAt);
+      return timeB - timeA;
+    });
+
+    return { previousChatters: chatters, availableParents: available };
+  }, [parents, conversationsMap]);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
-        <View style={styles.header}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{getInitials(parentName)}</Text>
-          </View>
-          <View style={styles.headerTextCol}>
-            <Text style={styles.headerName}>{parentName}</Text>
-            <Text style={styles.headerSub}>{relationshipId ? 'Connected' : 'No parent connected'}</Text>
-          </View>
+      <View style={styles.header}>
+        <View style={styles.headerTitleWrap}>
+          <Text style={styles.headerTitle}>Messages</Text>
+          <Text style={styles.headerSub}>
+            {parents.length === 0
+              ? 'No connected contacts'
+              : `${parents.length} connected parent${parents.length === 1 ? '' : 's'}`}
+          </Text>
         </View>
 
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={Colors.dashboard.accent} />
-          </View>
-        ) : !relationshipId ? (
-          <Pressable style={styles.emptyContainer} onPress={Keyboard.dismiss}>
-            <EmptyState
-              compact
-              iconName="chatbubbles-outline"
-              title="No Conversation Yet"
-              description="Connect with a parent to start chatting."
-            />
-          </Pressable>
-        ) : (
-          <FlatList
-            ref={listRef}
-            data={messages}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={[
-              styles.listContent,
-              messages.length === 0 && styles.listContentEmpty,
-            ]}
-            keyboardDismissMode="on-drag"
-            keyboardShouldPersistTaps="handled"
-            ListEmptyComponent={
-              <Pressable style={styles.emptyPressable} onPress={Keyboard.dismiss}>
-                <EmptyState
-                  compact
-                  iconName="chatbubble-ellipses-outline"
-                  title="Say Hello!"
-                  description={`Send your first message to ${parentName}.`}
-                />
-              </Pressable>
-            }
-            onContentSizeChange={() => {
-              if (messages.length > 0) {
-                listRef.current?.scrollToEnd({ animated: true });
+        {parents.length > 0 && availableParents.length > 0 ? (
+          <Pressable
+            onPress={() => {
+              if (availableParents.length > 0) {
+                handleOpenConversation(availableParents[0]);
               }
             }}
-            renderItem={({ item }) => {
-              const mine = item.senderId === user?.uid;
-              const isAudio = item.messageType === 'audio';
+            accessibilityRole="button"
+            accessibilityLabel="Start a new chat"
+            style={({ pressed }) => [styles.newChatBtn, { opacity: pressed ? 0.8 : 1 }]}>
+            <Ionicons name="chatbubble-ellipses-outline" size={16} color={Colors.dashboard.bg} />
+            <Text style={styles.newChatBtnText}>Start Chat</Text>
+          </Pressable>
+        ) : null}
+      </View>
 
-              return (
-                <View style={[styles.bubbleRow, mine ? styles.bubbleRowMine : styles.bubbleRowTheirs]}>
-                  <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
-                    {isAudio ? (
-                      <Pressable
-                        onPress={() => handlePlayAudio(item)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Play voice note, duration ${formatAudioDuration(item.audioDurationMs)}`}
-                        style={styles.audioRow}>
-                        <Ionicons
-                          name="play-circle"
-                          size={28}
-                          color={mine ? Colors.dashboard.bg : Colors.dashboard.accent}
-                        />
-                        <View style={styles.audioMeta}>
-                          <Text
-                            style={[
-                              styles.audioDuration,
-                              mine ? styles.bubbleTextMine : styles.bubbleTextTheirs,
-                            ]}>
-                            Voice note • {formatAudioDuration(item.audioDurationMs)}
+      {relsError ? (
+        <View style={styles.errorWrap}>
+          <ErrorBanner message={relsError} onRetry={refresh} retryLabel="Retry" />
+        </View>
+      ) : null}
+
+      {relsLoading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color={Colors.dashboard.accent} />
+        </View>
+      ) : parents.length === 0 ? (
+        <View style={styles.emptyWrap}>
+          <EmptyState
+            compact
+            iconName="chatbubbles-outline"
+            title="No Parents Connected"
+            description="Connect with a parent using an invite code to start chatting and coordinating care."
+            actionLabel="Invite a Parent"
+            onAction={handleOpenInvite}
+          />
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Section: Previous Chatters (if any) */}
+          {previousChatters.length > 0 ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Previous Chats</Text>
+              <View style={styles.cardList}>
+                {previousChatters.map(({ parent, conversation }) => {
+                  const name = parent.profile?.name ?? 'Parent';
+                  const photoUrl = parent.profile?.photoUrl;
+                  const isAudio = conversation.lastMessage?.includes('Voice message');
+
+                  return (
+                    <Pressable
+                      key={parent.relationship.id}
+                      onPress={() => handleOpenConversation(parent)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open chat with ${name}`}
+                      style={({ pressed }) => [
+                        styles.chatterItem,
+                        { opacity: pressed ? 0.8 : 1 },
+                      ]}>
+                      <View style={styles.avatarWrap}>
+                        {photoUrl ? (
+                          <Image source={{ uri: photoUrl }} style={styles.avatarImg} />
+                        ) : (
+                          <Text style={styles.avatarText}>{getInitials(name)}</Text>
+                        )}
+                      </View>
+
+                      <View style={styles.chatterInfo}>
+                        <View style={styles.chatterTopRow}>
+                          <Text style={styles.chatterName} numberOfLines={1}>
+                            {name}
                           </Text>
-                          <Text
-                            style={[
-                              styles.audioHint,
-                              mine ? styles.audioHintMine : styles.audioHintTheirs,
-                            ]}>
-                            Tap to play
+                          <Text style={styles.chatterTime}>
+                            {formatConversationTime(conversation.lastMessageAt)}
                           </Text>
                         </View>
-                      </Pressable>
-                    ) : (
-                      <Text style={[styles.bubbleText, mine ? styles.bubbleTextMine : styles.bubbleTextTheirs]}>
-                        {item.text}
-                      </Text>
-                    )}
-                    <Text style={[styles.bubbleTime, mine ? styles.bubbleTimeMine : styles.bubbleTimeTheirs]}>
-                      {formatMessageTime(item.createdAt)}
+
+                        <View style={styles.lastMessageRow}>
+                          {isAudio ? (
+                            <Ionicons
+                              name="mic"
+                              size={14}
+                              color={Colors.dashboard.accent}
+                              style={styles.micIcon}
+                            />
+                          ) : null}
+                          <Text
+                            style={[
+                              styles.lastMessageText,
+                              isAudio && styles.lastMessageAudio,
+                            ]}
+                            numberOfLines={1}>
+                            {conversation.lastMessage ?? 'No messages yet'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Ionicons
+                        name="chevron-forward"
+                        size={18}
+                        color={Colors.alpha.white35}
+                      />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
+
+          {/* Section: Available to Start Chat */}
+          {availableParents.length > 0 ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                {previousChatters.length > 0 ? 'Start a New Chat' : 'Start Chatting'}
+              </Text>
+
+              {previousChatters.length === 0 ? (
+                <View style={styles.introBanner}>
+                  <Ionicons name="chatbubbles" size={28} color={Colors.dashboard.accent} />
+                  <View style={styles.introTextWrap}>
+                    <Text style={styles.introTitle}>No previous chats yet</Text>
+                    <Text style={styles.introSub}>
+                      Select a connected parent below to start a conversation:
                     </Text>
                   </View>
                 </View>
-              );
-            }}
-          />
-        )}
+              ) : null}
 
-        {sendError ? (
-          <View style={styles.errorBannerWrap}>
-            <ErrorBanner
-              message={sendError}
-              onRetry={failedText ? () => handleSend(failedText) : undefined}
-              retryLabel="Retry"
-              onDismiss={() => {
-                setSendError(null);
-                setFailedText(null);
-              }}
-            />
-          </View>
-        ) : null}
+              <View style={styles.cardList}>
+                {availableParents.map((parent) => {
+                  const name = parent.profile?.name ?? 'Parent';
+                  const photoUrl = parent.profile?.photoUrl;
 
-        <View style={styles.inputBar}>
-          <Pressable
-            onPress={handleVoiceNotePress}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Record voice note"
-            style={({ pressed }) => [styles.micBtn, { opacity: pressed ? 0.8 : 1 }]}>
-            <Ionicons name="mic-outline" size={22} color={Colors.alpha.white55} />
-          </Pressable>
+                  return (
+                    <Pressable
+                      key={parent.relationship.id}
+                      onPress={() => handleOpenConversation(parent)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Start chat with ${name}`}
+                      style={({ pressed }) => [
+                        styles.startChatItem,
+                        { opacity: pressed ? 0.85 : 1 },
+                      ]}>
+                      <View style={styles.avatarWrap}>
+                        {photoUrl ? (
+                          <Image source={{ uri: photoUrl }} style={styles.avatarImg} />
+                        ) : (
+                          <Text style={styles.avatarText}>{getInitials(name)}</Text>
+                        )}
+                      </View>
 
-          <TextInput
-            value={text}
-            onChangeText={(val) => {
-              setText(val);
-              if (sendError && !failedText) setSendError(null);
-            }}
-            placeholder={relationshipId ? `Message ${parentName}...` : 'Connect with a parent to chat'}
-            placeholderTextColor={Colors.alpha.white28}
-            style={styles.input}
-            multiline
-            maxLength={500}
-            editable={Boolean(relationshipId)}
-            accessibilityLabel="Message Input"
-          />
+                      <View style={styles.chatterInfo}>
+                        <Text style={styles.chatterName} numberOfLines={1}>
+                          {name}
+                        </Text>
+                        <Text style={styles.startChatHint}>Connected • Tap to start chat</Text>
+                      </View>
 
-          <Pressable
-            onPress={() => handleSend()}
-            disabled={!text.trim() || sending || !relationshipId}
-            accessibilityRole="button"
-            accessibilityLabel="Send message"
-            style={({ pressed }) => [
-              styles.sendBtn,
-              (!text.trim() || sending || !relationshipId) && styles.sendBtnDisabled,
-              { opacity: pressed ? 0.85 : 1 },
-            ]}>
-            <Ionicons name="send" size={18} color={Colors.dashboard.bg} />
-          </Pressable>
-        </View>
-      </KeyboardAvoidingView>
+                      <View style={styles.startChatActionBadge}>
+                        <Ionicons
+                          name="chatbubble-ellipses"
+                          size={16}
+                          color={Colors.dashboard.bg}
+                        />
+                        <Text style={styles.startChatActionText}>Chat</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
+        </ScrollView>
+      )}
+
+      <InviteParentModal
+        visible={inviteVisible}
+        code={inviteCode}
+        generating={inviting}
+        error={inviteError}
+        onRetry={() => {
+          const current = getCurrentUser();
+          if (current) void generateInvitation(current.uid);
+        }}
+        onClose={() => setInviteVisible(false)}
+      />
     </SafeAreaView>
   );
 }
 
-function formatMessageTime(ts: any) {
-  if (!ts) return '';
-  const ms = typeof ts === 'object' && 'toMillis' in ts ? ts.toMillis() : new Date(ts).getTime();
-  if (!ms) return '';
-  const d = new Date(ms);
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+function getTimestampMs(ts: any): number {
+  if (!ts) return 0;
+  if (typeof ts === 'object' && 'toMillis' in ts) return ts.toMillis();
+  if (typeof ts === 'number') return ts;
+  return new Date(ts).getTime() || 0;
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.dashboard.bg },
-  flex: { flex: 1 },
+  safe: {
+    flex: 1,
+    backgroundColor: Colors.dashboard.bg,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 18,
-    paddingTop: 12,
-    paddingBottom: 10,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.dashboard.border,
+    borderBottomColor: Colors.alpha.white08,
   },
-  avatar: {
-    width: 42,
-    height: 42,
+  headerTitleWrap: {
+    gap: 2,
+  },
+  headerTitle: {
+    color: Colors.dashboard.text,
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: -0.3,
+  },
+  headerSub: {
+    color: Colors.alpha.white45,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  newChatBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: 999,
+    backgroundColor: Colors.dashboard.accent,
+  },
+  newChatBtnText: {
+    color: Colors.dashboard.bg,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  errorWrap: {
+    paddingHorizontal: 18,
+    paddingTop: 8,
+  },
+  content: {
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 36,
+    gap: 22,
+  },
+  section: {
+    gap: 10,
+  },
+  sectionTitle: {
+    color: Colors.alpha.white55,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  introBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: Colors.dashboard.accentSoftBg,
+    borderWidth: 1,
+    borderColor: Colors.dashboard.accentSoftBorder,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 4,
+  },
+  introTextWrap: {
+    flex: 1,
+    gap: 3,
+  },
+  introTitle: {
+    color: Colors.dashboard.text,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  introSub: {
+    color: Colors.alpha.white70,
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
+  },
+  cardList: {
+    backgroundColor: Colors.dashboard.surface,
+    borderWidth: 1,
+    borderColor: Colors.dashboard.border,
+    borderRadius: 22,
+    overflow: 'hidden',
+  },
+  chatterItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.alpha.white06,
+  },
+  startChatItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.alpha.white06,
+  },
+  avatarWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: Colors.dashboard.accentIconBg,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: Colors.dashboard.accentSoftBorder,
+    overflow: 'hidden',
   },
-  avatarText: { color: Colors.dashboard.accent, fontWeight: '900', fontSize: 15 },
-  headerTextCol: { flex: 1 },
-  headerName: { color: Colors.dashboard.text, fontSize: 16, fontWeight: '900' },
-  headerSub: { color: Colors.alpha.white40, fontSize: 11, fontWeight: '800' },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  emptyPressable: {
+  avatarImg: {
     width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
+    height: '100%',
   },
-  listContent: { padding: 18, gap: 8, flexGrow: 1 },
-  listContentEmpty: {
-    justifyContent: 'center',
-    alignItems: 'center',
+  avatarText: {
+    color: Colors.dashboard.accent,
+    fontSize: 16,
+    fontWeight: '900',
   },
-  bubbleRow: { width: '100%' },
-  bubbleRowMine: { alignItems: 'flex-end' },
-  bubbleRowTheirs: { alignItems: 'flex-start' },
-  bubble: { maxWidth: '80%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
-  bubbleMine: { backgroundColor: Colors.dashboard.accent, borderBottomRightRadius: 4 },
-  bubbleTheirs: {
-    backgroundColor: Colors.dashboard.surfaceStrong,
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: Colors.alpha.white08,
-  },
-  bubbleText: { fontSize: 15, fontWeight: '700' },
-  bubbleTextMine: { color: Colors.dashboard.bg },
-  bubbleTextTheirs: { color: Colors.dashboard.text },
-  bubbleTime: { marginTop: 4, fontSize: 10, fontWeight: '800', alignSelf: 'flex-end' },
-  bubbleTimeMine: { color: Colors.dashboard.bg, opacity: 0.7 },
-  bubbleTimeTheirs: { color: Colors.alpha.white40 },
-  audioRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 2,
-    minWidth: 160,
-  },
-  audioMeta: {
+  chatterInfo: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
-  audioDuration: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  audioHint: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  audioHintMine: {
-    color: Colors.dashboard.bg,
-    opacity: 0.8,
-  },
-  audioHintTheirs: {
-    color: Colors.alpha.white45,
-  },
-  errorBannerWrap: {
-    paddingHorizontal: 14,
-    paddingBottom: 6,
-  },
-  inputBar: {
+  chatterTopRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: Colors.dashboard.border,
   },
-  micBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.dashboard.surface,
-    borderWidth: 1,
-    borderColor: Colors.dashboard.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  input: {
-    flex: 1,
-    minHeight: 44,
-    maxHeight: 120,
-    borderRadius: 22,
-    backgroundColor: Colors.dashboard.surface,
-    borderWidth: 1,
-    borderColor: Colors.dashboard.border,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+  chatterName: {
     color: Colors.dashboard.text,
     fontSize: 15,
+    fontWeight: '800',
+    flex: 1,
+  },
+  chatterTime: {
+    color: Colors.alpha.white45,
+    fontSize: 11,
     fontWeight: '700',
   },
-  sendBtn: {
-    width: 44,
-    height: 44,
+  lastMessageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  micIcon: {
+    marginRight: 2,
+  },
+  lastMessageText: {
+    color: Colors.alpha.white70,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  lastMessageAudio: {
+    color: Colors.dashboard.accent,
+    fontWeight: '700',
+  },
+  startChatHint: {
+    color: Colors.dashboard.accent,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  startChatActionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
     borderRadius: 999,
     backgroundColor: Colors.dashboard.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  sendBtnDisabled: { opacity: 0.4 },
+  startChatActionText: {
+    color: Colors.dashboard.bg,
+    fontSize: 12,
+    fontWeight: '900',
+  },
 });

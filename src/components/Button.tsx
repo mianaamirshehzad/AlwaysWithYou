@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
   label: {
     color: Colors.brand.onPrimary,
     fontSize: 20,
-    fontWeight: '700',
+    // fontWeight: '700',
     letterSpacing: 0.2,
   },
 });

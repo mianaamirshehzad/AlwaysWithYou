@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 
 import childSettingsColors from './colors';
+import Colors from '@/src/assets/Colors';
 import ErrorBanner from '../ErrorBanner';
 import { updateUserProfile } from '@/src/services/firestore/users';
 import { pickProfileImageFromGallery } from '@/src/services/imagePicker';
@@ -168,9 +169,9 @@ export default function ChildProfileModal({
                   accessibilityLabel="Choose photo from gallery"
                   style={({ pressed }) => [styles.avatarBadge, { opacity: pressed ? 0.85 : 1 }]}>
                   {pickingImage ? (
-                    <ActivityIndicator size="small" color={childSettingsColors.white} />
+                    <ActivityIndicator size="small" color={Colors.dashboard.bg} />
                   ) : (
-                    <Ionicons name="camera" size={16} color={childSettingsColors.white} />
+                    <Ionicons name="camera" size={16} color={Colors.dashboard.bg} />
                   )}
                 </Pressable>
               </View>
@@ -253,19 +254,19 @@ export default function ChildProfileModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: '#0D1C16',
+    backgroundColor: 'rgba(0, 0, 0, 0.70)',
     justifyContent: 'flex-end',
   },
   backdrop: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#0D1C16',
+    backgroundColor: 'rgba(0, 0, 0, 0.70)',
   },
   sheet: {
-    backgroundColor: childSettingsColors.card,
+    backgroundColor: Colors.dashboard.surfaceStrong,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderWidth: 1,
-    borderColor: childSettingsColors.border,
+    borderColor: Colors.dashboard.border,
     paddingHorizontal: 20,
     paddingBottom: Platform.OS === 'ios' ? 36 : 28,
     paddingTop: 12,
@@ -275,7 +276,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: childSettingsColors.border,
+    backgroundColor: Colors.alpha.white25,
     alignSelf: 'center',
     marginBottom: 12,
   },
@@ -294,9 +295,9 @@ const styles = StyleSheet.create({
     minWidth: 40,
     minHeight: 40,
     borderRadius: 20,
-    backgroundColor: childSettingsColors.background,
+    backgroundColor: Colors.dashboard.surface,
     borderWidth: 1,
-    borderColor: childSettingsColors.border,
+    borderColor: Colors.alpha.white08,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -328,7 +329,7 @@ const styles = StyleSheet.create({
     width: 86,
     height: 86,
     borderRadius: 43,
-    backgroundColor: childSettingsColors.accentSoft,
+    backgroundColor: Colors.dashboard.accentIconBg,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -346,7 +347,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: childSettingsColors.accent,
     borderWidth: 2,
-    borderColor: childSettingsColors.white,
+    borderColor: Colors.dashboard.surfaceStrong,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -366,26 +367,26 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   input: {
-    color: childSettingsColors.text,
+    color: Colors.dashboard.text,
     fontSize: 16,
     fontWeight: '700',
     minHeight: 48,
     borderRadius: 14,
-    backgroundColor: childSettingsColors.background,
+    backgroundColor: Colors.dashboard.surface,
     borderWidth: 1,
-    borderColor: childSettingsColors.border,
+    borderColor: Colors.alpha.white08,
     paddingHorizontal: 14,
   },
   inputError: {
-    borderColor: '#EF4444',
+    borderColor: Colors.dashboard.danger,
   },
   fieldError: {
-    color: '#EF4444',
+    color: Colors.dashboard.dangerText,
     fontSize: 12,
     fontWeight: '700',
   },
   hint: {
-    color: childSettingsColors.textMuted,
+    color: Colors.alpha.white35,
     fontSize: 11,
     fontWeight: '600',
   },
@@ -398,14 +399,14 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 50,
     borderRadius: 999,
-    backgroundColor: childSettingsColors.background,
+    backgroundColor: Colors.dashboard.surface,
     borderWidth: 1,
-    borderColor: childSettingsColors.border,
+    borderColor: Colors.alpha.white08,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cancelText: {
-    color: childSettingsColors.textSecondary,
+    color: Colors.alpha.white70,
     fontSize: 15,
     fontWeight: '800',
   },
@@ -418,7 +419,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   saveText: {
-    color: childSettingsColors.white,
+    color: Colors.dashboard.bg,
     fontSize: 15,
     fontWeight: '900',
   },

@@ -1,28 +1,30 @@
+import Colors from '@/src/assets/Colors';
+
 const childSettingsColors = {
-  background: '#F6F7F9',
-  card: '#FFFFFF',
-  border: '#ECEEF2',
-  divider: '#EFF1F4',
+  background: Colors.dashboard.bg,
+  card: Colors.dashboard.surface,
+  border: Colors.dashboard.border,
+  divider: Colors.dashboard.border,
 
-  text: '#2E333B',
-  textSecondary: '#8A9099',
-  textMuted: '#A6ACB6',
-  sectionTitle: '#6E7683',
+  text: Colors.dashboard.text,
+  textSecondary: Colors.alpha.white70,
+  textMuted: Colors.alpha.white45,
+  sectionTitle: Colors.alpha.white55,
 
-  accent: '#FF7A3D',
-  accentSoft: '#FFF0E7',
-  accentBorder: 'rgba(255,122,61,0.30)',
+  accent: Colors.dashboard.accent,
+  accentSoft: Colors.dashboard.accentSoftBg,
+  accentBorder: Colors.dashboard.accentSoftBorder,
 
-  purple: '#8B5CF6',
-  purpleSoft: '#F1EDFF',
+  purple: Colors.dashboard.purple,
+  purpleSoft: Colors.dashboard.purpleSoftBg,
 
-  green: '#2FBF7F',
-  greenSoft: '#E9F8F0',
+  green: Colors.dashboard.accent,
+  greenSoft: Colors.dashboard.accentSoftBg,
 
-  switchTrackOff: '#E2E5EA',
+  switchTrackOff: Colors.alpha.white16,
 
-  white: '#FFFFFF',
-  black: '#000000',
+  white: Colors.dashboard.text,
+  black: Colors.alpha.black80,
 } as const;
 
 export default childSettingsColors;

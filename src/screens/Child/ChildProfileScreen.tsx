@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation, useRouter } from 'expo-router';
 import * as React from 'react';
 import {
   ActivityIndicator,
@@ -25,8 +24,6 @@ import { validateDisplayName, validatePhoneNumber } from '@/src/utils/validation
 import type { UserProfile } from '@/src/models';
 
 export default function ChildProfileScreen() {
-  const router = useRouter();
-  const navigation = useNavigation();
   const { user, role } = useAuth();
 
   const [profile, setProfile] = React.useState<UserProfile | null>(null);
@@ -126,32 +123,8 @@ export default function ChildProfileScreen() {
     }
   };
 
-  const handleBack = () => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-    } else {
-      router.replace('/(tabs)/settings');
-    }
-  };
-
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={handleBack}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          hitSlop={12}
-          style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.85 : 1 }]}>
-          <Ionicons name="arrow-back" size={20} color={Colors.dashboard.text} />
-        </Pressable>
-        <View style={styles.headerTitleWrap}>
-          <Text style={styles.title}>My Profile</Text>
-          <Text style={styles.subtitle}>{role === 'child' ? 'Caregiver account' : 'Parent account'}</Text>
-        </View>
-        <View style={{ width: 40 }} />
-      </View>
-
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.avatarWrap}>
           <View style={styles.avatar}>
@@ -305,28 +278,7 @@ function Field(props: { label: string; children: React.ReactNode }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.dashboard.bg },
-  header: {
-    paddingHorizontal: 18,
-    paddingTop: 8,
-    paddingBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerTitleWrap: { alignItems: 'center', gap: 2 },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.dashboard.surface,
-    borderWidth: 1,
-    borderColor: Colors.alpha.white08,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: { color: Colors.dashboard.text, fontSize: 20, fontWeight: '900' },
-  subtitle: { color: Colors.alpha.white45, fontSize: 12, fontWeight: '800' },
-  content: { paddingHorizontal: 18, paddingBottom: 28, gap: 16 },
+  content: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 28, gap: 16 },
   avatarWrap: { alignItems: 'center', paddingVertical: 12, gap: 8 },
   avatar: {
     position: 'relative',

@@ -426,7 +426,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
 
-  button: { marginBottom: -100 },
+  button: { marginBottom: -80 },
 
   greeting: { fontSize: 44, lineHeight: 48, fontWeight: '900' },
   greetingHi: { color: Colors.dashboard.text },

@@ -100,7 +100,7 @@ function RootNavigator() {
 
     if (status === 'authenticated' && role !== null) {
       if (role === 'child') {
-        if (segments[0] !== '(tabs)' && segments[0] !== 'modal') {
+        if (segments[0] !== '(tabs)' && segments[0] !== 'modal' && segments[0] !== 'conversation') {
           router.replace('/(tabs)');
         }
         return;
@@ -113,7 +113,7 @@ function RootNavigator() {
         }
 
         if (isParentLinked) {
-          if (segments[0] !== '(parent-tabs)' && segments[0] !== 'modal') {
+          if (segments[0] !== '(parent-tabs)' && segments[0] !== 'modal' && segments[0] !== 'conversation') {
             router.replace('/(parent-tabs)');
           }
         } else {
@@ -140,6 +140,7 @@ function RootNavigator() {
         <Stack.Screen name="invite" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(parent-tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="conversation" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
 

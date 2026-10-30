@@ -86,3 +86,29 @@ export function formatRelativeTime(timestamp: any): string {
   if (days < 7) return `${days}d ago`;
   return new Date(ms).toLocaleDateString();
 }
+
+export function formatConversationTime(timestamp: any): string {
+  if (!timestamp) return '';
+  const ms =
+    typeof timestamp === 'object' && 'toMillis' in timestamp
+      ? (timestamp as any).toMillis()
+      : typeof timestamp === 'number'
+      ? timestamp
+      : new Date(timestamp as any).getTime();
+  if (!ms || Number.isNaN(ms)) return '';
+  const date = new Date(ms);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) {
+    return 'Yesterday';
+  }
+  const diffDays = Math.round((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 7) {
+    return date.toLocaleDateString(undefined, { weekday: 'short' });
+  }
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}

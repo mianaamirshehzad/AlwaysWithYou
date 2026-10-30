@@ -1,9 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as React from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import Colors from '@/src/assets/Colors';
 import Images from '../../assets/Images';
 import AppInfoSection from '../../components/ChildSettings/AppInfoSection';
 import ChildProfileCard from '../../components/ChildSettings/ChildProfileCard';
@@ -28,7 +29,6 @@ import type { UserProfile } from '../../models';
 
 export default function ChildSettingsScreen() {
   const router = useRouter();
-  const navigation = useNavigation();
   const params = useLocalSearchParams<{ editProfile?: string }>();
   const { user, role } = useAuth();
   const { parents } = useRelationships();
@@ -135,19 +135,6 @@ export default function ChildSettingsScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.screen}>
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => (navigation.canGoBack() ? navigation.goBack() : router.replace('/(tabs)'))}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            hitSlop={12}
-            style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.9 : 1 }]}>
-            <Ionicons name="arrow-back" size={18} color={childSettingsColors.text} />
-          </Pressable>
-          <Text style={styles.headerTitle}>Profile</Text>
-          <View style={styles.headerSpacer} />
-        </View>
-
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <ChildProfileCard
             name={displayName}
@@ -203,11 +190,12 @@ export default function ChildSettingsScreen() {
 
           <Pressable
             onPress={handleLogOut}
+            disabled={loggingOut}
             accessibilityRole="button"
             accessibilityLabel="Log Out"
             style={({ pressed }) => [styles.logOutBtn, { opacity: pressed ? 0.85 : 1 }]}>
-            <Ionicons name="log-out-outline" size={18} color={childSettingsColors.accent} />
-            <Text style={styles.logOutText}>Log Out</Text>
+            <Ionicons name="log-out-outline" size={18} color={Colors.dashboard.danger} />
+            <Text style={styles.logOutText}>{loggingOut ? 'Logging Out...' : 'Log Out'}</Text>
           </Pressable>
 
           <View style={styles.footer}>
@@ -258,33 +246,11 @@ export default function ChildSettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: childSettingsColors.background },
+  safe: { flex: 1, backgroundColor: Colors.dashboard.bg },
   screen: { flex: 1 },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 6,
-    paddingBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: childSettingsColors.background,
-    zIndex: 10,
-  },
-  backBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 999,
-    backgroundColor: childSettingsColors.card,
-    borderWidth: 1,
-    borderColor: childSettingsColors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: { color: childSettingsColors.text, fontSize: 16, fontWeight: '900' },
-  headerSpacer: { width: 42 },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingTop: 12,
     paddingBottom: 40,
     gap: 20,
   },
@@ -293,20 +259,20 @@ const styles = StyleSheet.create({
     width: '100%',
     minHeight: 56,
     borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: childSettingsColors.accentBorder,
+    borderWidth: 1,
+    borderColor: Colors.dashboard.danger,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: childSettingsColors.card,
+    backgroundColor: Colors.dashboard.bg,
   },
-  logOutText: { color: childSettingsColors.accent, fontSize: 15, fontWeight: '800' },
+  logOutText: { color: Colors.dashboard.danger, fontSize: 15, fontWeight: '800' },
   footer: {
     marginTop: 4,
     alignItems: 'center',
     gap: 3,
   },
-  version: { color: childSettingsColors.textSecondary, fontSize: 11, fontWeight: '700' },
-  love: { color: childSettingsColors.textMuted, fontSize: 11, fontWeight: '600' },
+  version: { color: Colors.alpha.white28, fontSize: 11, fontWeight: '700' },
+  love: { color: Colors.alpha.white45, fontSize: 11, fontWeight: '600' },
 });
