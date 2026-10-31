@@ -10,6 +10,8 @@ import {
   KeyboardAvoidingView,
   Linking,
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Platform,
   Pressable,
   StyleSheet,
@@ -24,10 +26,20 @@ import Colors from '@/src/assets/Colors';
 import EmptyState from '@/src/components/EmptyState';
 import ErrorBanner from '@/src/components/ErrorBanner';
 import { useAuth } from '@/src/context/AuthContext';
+import { useUserProfile } from '@/src/context/UserProfileContext';
+import { useUnreadChat } from '@/src/context/UnreadChatContext';
 import { getFirebaseDb } from '@/src/services/firebase';
 import { getUserProfile } from '@/src/services/firestore/users';
-import { subscribeToMessages, sendMessageWithRetry } from '@/src/services/firestore/chat';
+import {
+  subscribeToMessages,
+  sendMessageWithRetry,
+  getCachedMessages,
+  saveCachedMessages,
+  getOlderMessages,
+  CHAT_PAGE_SIZE,
+} from '@/src/services/firestore/chat';
 import { pickChatImage, takeChatPhoto } from '@/src/services/imagePicker';
+import { uploadChatMedia } from '@/src/services/mediaUpload';
 import {
   checkVoiceNoteSupport,
   formatAudioDuration,
@@ -38,12 +50,14 @@ import {
   pauseAudioPlayback,
   stopAudioPlayback,
 } from '@/src/services/voiceNotes';
-import { getInitials } from '@/src/utils/date';
+import { getInitials, getTimestampMs } from '@/src/utils/date';
 import type { Message } from '@/src/models';
 
 export default function ConversationScreen() {
   const router = useRouter();
   const { user, role: myRole } = useAuth();
+  const { profile } = useUserProfile();
+  const { markConversationAsRead, setActiveConversationId } = useUnreadChat();
   const params = useLocalSearchParams<{
     relationshipId?: string;
     name?: string;
@@ -62,12 +76,31 @@ export default function ConversationScreen() {
   const [receiverPhoto, setReceiverPhoto] = React.useState<string | null>(photoUrl);
 
   const [messages, setMessages] = React.useState<Message[]>([]);
+  const [olderMessages, setOlderMessages] = React.useState<Message[]>([]);
   const [pendingMessages, setPendingMessages] = React.useState<Message[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [loadingOlder, setLoadingOlder] = React.useState(false);
+  const [hasMoreOlder, setHasMoreOlder] = React.useState(true);
   const [text, setText] = React.useState('');
   const [sending, setSending] = React.useState(false);
   const [sendError, setSendError] = React.useState<string | null>(null);
   const [failedText, setFailedText] = React.useState<string | null>(null);
+
+  const oldestDocRef = React.useRef<any>(null);
+  const isLoadingOlderRef = React.useRef(false);
+  const isNearBottomRef = React.useRef(true);
+  const isInitialLoadedRef = React.useRef(false);
+
+  // Set active conversation and mark as read while viewing
+  React.useEffect(() => {
+    if (relationshipId) {
+      setActiveConversationId(relationshipId);
+      void markConversationAsRead(relationshipId);
+    }
+    return () => {
+      setActiveConversationId(null);
+    };
+  }, [relationshipId, markConversationAsRead, setActiveConversationId]);
 
   // Sync photoUrl if updated in params, or fetch other participant's profile from Firestore
   React.useEffect(() => {
@@ -100,8 +133,24 @@ export default function ConversationScreen() {
   }, [relationshipId, params.photoUrl, user]);
 
   const displayedMessages = React.useMemo(() => {
-    return [...messages, ...pendingMessages];
-  }, [messages, pendingMessages]);
+    const map = new Map<string, Message>();
+    for (const m of olderMessages) {
+      map.set(m.id, m);
+    }
+    for (const m of messages) {
+      map.set(m.id, m);
+    }
+    for (const m of pendingMessages) {
+      map.set(m.id, m);
+    }
+    const combined = Array.from(map.values());
+    combined.sort((a, b) => {
+      const timeA = getTimestampMs(a.createdAt);
+      const timeB = getTimestampMs(b.createdAt);
+      return timeA - timeB;
+    });
+    return combined;
+  }, [olderMessages, messages, pendingMessages]);
 
   // Voice recording state
   const [isRecording, setIsRecording] = React.useState(false);
@@ -118,33 +167,157 @@ export default function ConversationScreen() {
 
   const listRef = React.useRef<FlatList<Message>>(null);
 
+  // Load 10 - 20 messages from local cache first, then subscribe to real-time updates
   React.useEffect(() => {
     if (!relationshipId) {
       setMessages([]);
+      setOlderMessages([]);
       setLoading(false);
       return;
     }
-    setLoading(true);
+
+    let mounted = true;
+    isInitialLoadedRef.current = false;
+    setOlderMessages([]);
+    setHasMoreOlder(true);
+    oldestDocRef.current = null;
+
+    // 1. Instant local cache hydration (10 - 20 messages)
+    getCachedMessages(relationshipId)
+      .then((cached) => {
+        if (mounted && cached.length > 0 && !isInitialLoadedRef.current) {
+          setMessages(cached);
+          setLoading(false);
+        }
+      })
+      .catch(() => {});
+
+    // 2. Real-time subscription for latest 20 messages
     const unsubscribe = subscribeToMessages(
       relationshipId,
-      (msgs) => {
-        setMessages(msgs);
+      (newestBatch, oldestDoc) => {
+        if (!mounted) return;
+        setMessages(newestBatch);
         setLoading(false);
+        isInitialLoadedRef.current = true;
+
+        void saveCachedMessages(relationshipId, newestBatch);
+        void markConversationAsRead(relationshipId);
+
+        // Store pagination cursor from oldest doc in real-time batch
+        if (oldestDoc && !oldestDocRef.current) {
+          oldestDocRef.current = oldestDoc;
+        }
+        if (newestBatch.length < CHAT_PAGE_SIZE) {
+          setHasMoreOlder(false);
+        }
       },
-      100,
+      CHAT_PAGE_SIZE,
       () => {
-        setSendError('Failed to synchronize messages with the server.');
-        setLoading(false);
+        if (mounted) {
+          setSendError('Failed to synchronize messages with the server.');
+          setLoading(false);
+        }
       }
     );
+
     return () => {
+      mounted = false;
       unsubscribe();
       stopAudioPlayback().catch(() => {});
       if (recordingTimerRef.current) {
         clearInterval(recordingTimerRef.current);
       }
     };
-  }, [relationshipId]);
+  }, [relationshipId, markConversationAsRead]);
+
+  // Pagination: load earlier messages backwards when scrolling upwards
+  const handleLoadOlderMessages = React.useCallback(async () => {
+    if (loadingOlder || !hasMoreOlder || !relationshipId || !oldestDocRef.current) {
+      return;
+    }
+
+    setLoadingOlder(true);
+    isLoadingOlderRef.current = true;
+
+    try {
+      const result = await getOlderMessages(relationshipId, oldestDocRef.current, CHAT_PAGE_SIZE);
+      if (result.messages.length > 0) {
+        setOlderMessages((prev) => {
+          const map = new Map<string, Message>();
+          for (const m of result.messages) {
+            map.set(m.id, m);
+          }
+          for (const m of prev) {
+            map.set(m.id, m);
+          }
+          return Array.from(map.values());
+        });
+        oldestDocRef.current = result.oldestDoc;
+      }
+      setHasMoreOlder(result.hasMore);
+    } catch (err) {
+      console.warn('Failed to load older messages:', err);
+    } finally {
+      setLoadingOlder(false);
+      setTimeout(() => {
+        isLoadingOlderRef.current = false;
+      }, 400);
+    }
+  }, [loadingOlder, hasMoreOlder, relationshipId]);
+
+  const handleScroll = React.useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      const offsetY = contentOffset.y;
+
+      const distanceFromBottom = contentSize.height - (offsetY + layoutMeasurement.height);
+      isNearBottomRef.current = distanceFromBottom < 100;
+
+      // When user goes upwards and reaches the top of the currently displayed messages
+      if (offsetY <= 40 && !loadingOlder && hasMoreOlder && displayedMessages.length >= 10) {
+        void handleLoadOlderMessages();
+      }
+    },
+    [loadingOlder, hasMoreOlder, displayedMessages.length, handleLoadOlderMessages]
+  );
+
+  const renderListHeader = React.useCallback(() => {
+    if (displayedMessages.length === 0) return null;
+
+    if (loadingOlder) {
+      return (
+        <View style={styles.loadingOlderWrap}>
+          <ActivityIndicator size="small" color={Colors.dashboard.accent} />
+          <Text style={styles.loadingOlderText}>Loading earlier messages...</Text>
+        </View>
+      );
+    }
+
+    if (hasMoreOlder && displayedMessages.length >= CHAT_PAGE_SIZE) {
+      return (
+        <Pressable
+          onPress={handleLoadOlderMessages}
+          accessibilityRole="button"
+          accessibilityLabel="Load earlier messages"
+          style={({ pressed }) => [styles.loadOlderBtn, { opacity: pressed ? 0.8 : 1 }]}>
+          <Ionicons name="arrow-up-circle-outline" size={16} color={Colors.dashboard.accent} />
+          <Text style={styles.loadOlderBtnText}>Load earlier messages</Text>
+        </Pressable>
+      );
+    }
+
+    if (!hasMoreOlder && displayedMessages.length >= CHAT_PAGE_SIZE) {
+      return (
+        <View style={styles.startOfChatWrap}>
+          <Ionicons name="chatbubble-ellipses" size={16} color={Colors.alpha.white30} />
+          <Text style={styles.startOfChatText}>Beginning of conversation</Text>
+        </View>
+      );
+    }
+
+    return null;
+  }, [displayedMessages.length, loadingOlder, hasMoreOlder, handleLoadOlderMessages]);
 
   const handleBack = () => {
     stopAudioPlayback().catch(() => {});
@@ -179,7 +352,10 @@ export default function ConversationScreen() {
     setPendingMessages((prev) => [...prev, tempMsg]);
 
     try {
-      await sendMessageWithRetry(relationshipId, user.uid, candidate);
+      await sendMessageWithRetry(relationshipId, user.uid, candidate, {
+        messageType: 'text',
+        senderName: profile?.name || user.displayName || undefined,
+      });
     } catch (err: any) {
       setFailedText(candidate);
       setSendError(err?.message ?? 'Failed to deliver message. Tap to retry.');
@@ -238,10 +414,20 @@ export default function ConversationScreen() {
 
       setSending(true);
       setSendError(null);
+
+      let finalImageUrl = uri;
+      try {
+        const imagePath = `chat/${relationshipId}/images/${Date.now()}.jpg`;
+        finalImageUrl = await uploadChatMedia(uri, imagePath, 'image/jpeg');
+      } catch (uploadErr) {
+        console.warn('Image upload fallback:', uploadErr);
+      }
+
       try {
         await sendMessageWithRetry(relationshipId, user.uid, '📷 Photo', {
           messageType: 'image',
-          imageUrl: uri,
+          imageUrl: finalImageUrl,
+          senderName: profile?.name || user.displayName || undefined,
         });
       } finally {
         setPendingMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -274,10 +460,20 @@ export default function ConversationScreen() {
 
       setSending(true);
       setSendError(null);
+
+      let finalImageUrl = uri;
+      try {
+        const imagePath = `chat/${relationshipId}/images/${Date.now()}.jpg`;
+        finalImageUrl = await uploadChatMedia(uri, imagePath, 'image/jpeg');
+      } catch (uploadErr) {
+        console.warn('Photo upload fallback:', uploadErr);
+      }
+
       try {
         await sendMessageWithRetry(relationshipId, user.uid, '📷 Photo', {
           messageType: 'image',
-          imageUrl: uri,
+          imageUrl: finalImageUrl,
+          senderName: profile?.name || user.displayName || undefined,
         });
       } finally {
         setPendingMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -397,11 +593,20 @@ export default function ConversationScreen() {
       };
       setPendingMessages((prev) => [...prev, tempMsg]);
 
+      let finalAudioUrl = result.uri;
+      try {
+        const audioPath = `chat/${relationshipId}/audio/${Date.now()}.m4a`;
+        finalAudioUrl = await uploadChatMedia(result.uri, audioPath, 'audio/m4a');
+      } catch (uploadErr) {
+        console.warn('Audio upload fallback:', uploadErr);
+      }
+
       try {
         await sendMessageWithRetry(relationshipId, user.uid, '🎤 Voice message', {
           messageType: 'audio',
-          audioUrl: result.uri,
+          audioUrl: finalAudioUrl,
           audioDurationMs: result.durationMs,
+          senderName: profile?.name || user.displayName || undefined,
         });
       } finally {
         setPendingMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -434,10 +639,11 @@ export default function ConversationScreen() {
       setPlaybackDurationMs(item.audioDurationMs || 0);
 
       await playAudioNote(item.audioUrl, (status) => {
-        if (!status.isPlaying || status.didFinish) {
+        if (status.didFinish) {
           setPlayingMessageId(null);
           setPlaybackPositionMs(0);
-        } else {
+        } else if (status.isPlaying) {
+          setPlayingMessageId(item.id);
           setPlaybackPositionMs(status.positionMs);
           if (status.durationMs > 0) {
             setPlaybackDurationMs(status.durationMs);
@@ -511,6 +717,9 @@ export default function ConversationScreen() {
             ]}
             keyboardDismissMode="on-drag"
             keyboardShouldPersistTaps="handled"
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            ListHeaderComponent={renderListHeader}
             ListEmptyComponent={
               <Pressable style={styles.emptyPressable} onPress={Keyboard.dismiss}>
                 <EmptyState
@@ -523,7 +732,10 @@ export default function ConversationScreen() {
             }
             onContentSizeChange={() => {
               if (displayedMessages.length > 0) {
-                listRef.current?.scrollToEnd({ animated: true });
+                // Only scroll to end if not loading older messages, and user was near bottom or on initial load
+                if (!isLoadingOlderRef.current && (isNearBottomRef.current || !isInitialLoadedRef.current)) {
+                  listRef.current?.scrollToEnd({ animated: isInitialLoadedRef.current });
+                }
               }
             }}
             renderItem={({ item }) => {
@@ -765,20 +977,22 @@ export default function ConversationScreen() {
         ) : (
           /* Normal Message Input State */
           <View style={styles.inputBar}>
-            {/* Image / Camera Button */}
-            <Pressable
-              onPress={handleImagePickerPress}
-              disabled={sending || !relationshipId}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Attach photo"
-              style={({ pressed }) => [
-                styles.attachBtn,
-                (!relationshipId || sending) && styles.btnDisabled,
-                { opacity: pressed ? 0.75 : 1 },
-              ]}>
-              <Ionicons name="camera-outline" size={23} color={Colors.dashboard.accent} />
-            </Pressable>
+            {/* Image / Camera Button: Hidden when user is typing to expand input width */}
+            {!hasText && (
+              <Pressable
+                onPress={handleImagePickerPress}
+                disabled={sending || !relationshipId}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Attach photo"
+                style={({ pressed }) => [
+                  styles.attachBtn,
+                  (!relationshipId || sending) && styles.btnDisabled,
+                  { opacity: pressed ? 0.75 : 1 },
+                ]}>
+                <Ionicons name="camera-outline" size={23} color={Colors.dashboard.accent} />
+              </Pressable>
+            )}
 
             <TextInput
               value={text}
@@ -799,7 +1013,7 @@ export default function ConversationScreen() {
               accessibilityLabel="Message Input"
             />
 
-            {/* Dynamic Action Button: Mic when empty, Send when has text */}
+            {/* Dynamic Action Button: Mic when empty, Send when has text (Instant switch without loading spinner) */}
             {hasText ? (
               <Pressable
                 onPress={() => handleSend()}
@@ -811,11 +1025,7 @@ export default function ConversationScreen() {
                   (!text.trim() || sending || !relationshipId) && styles.sendBtnDisabled,
                   { opacity: pressed ? 0.85 : 1 },
                 ]}>
-                {sending ? (
-                  <ActivityIndicator size="small" color={Colors.dashboard.bg} />
-                ) : (
-                  <Ionicons name="send" size={18} color={Colors.dashboard.bg} />
-                )}
+                <Ionicons name="send" size={18} color={Colors.dashboard.bg} />
               </Pressable>
             ) : (
               <Pressable
@@ -1252,5 +1462,49 @@ const styles = StyleSheet.create({
   modalImage: {
     width: '100%',
     height: '100%',
+  },
+  // Pagination & Load older messages styling
+  loadingOlderWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+  },
+  loadingOlderText: {
+    color: Colors.dashboard.accent,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  loadOlderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: Colors.dashboard.accentIconBg,
+    borderWidth: 1,
+    borderColor: Colors.dashboard.accentSoftBorder,
+    alignSelf: 'center',
+    marginBottom: 8,
+  },
+  loadOlderBtnText: {
+    color: Colors.dashboard.accent,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  startOfChatWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+  },
+  startOfChatText: {
+    color: Colors.alpha.white35,
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

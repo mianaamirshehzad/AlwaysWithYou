@@ -41,7 +41,7 @@ export async function pickChatImage(): Promise<string | null> {
 
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'],
-    allowsEditing: false,
+    allowsEditing: true,
     quality: 0.5,
     base64: true,
   });
@@ -51,15 +51,12 @@ export async function pickChatImage(): Promise<string | null> {
   }
 
   const asset = result.assets[0];
-  if (asset.base64) {
-    return `data:image/jpeg;base64,${asset.base64}`;
-  }
-  return asset.uri;
+  return asset.uri || (asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : null);
 }
 
 /**
  * Opens device camera to take a picture for chat.
- * Returns a data URI (base64) or file URI string if captured, or null if canceled.
+ * Returns a file URI or data URI string if captured, or null if canceled.
  */
 export async function takeChatPhoto(): Promise<string | null> {
   const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -69,7 +66,7 @@ export async function takeChatPhoto(): Promise<string | null> {
 
   const result = await ImagePicker.launchCameraAsync({
     mediaTypes: ['images'],
-    allowsEditing: false,
+    allowsEditing: true,
     quality: 0.5,
     base64: true,
   });
@@ -79,8 +76,5 @@ export async function takeChatPhoto(): Promise<string | null> {
   }
 
   const asset = result.assets[0];
-  if (asset.base64) {
-    return `data:image/jpeg;base64,${asset.base64}`;
-  }
-  return asset.uri;
+  return asset.uri || (asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : null);
 }

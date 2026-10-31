@@ -8,6 +8,8 @@ import {
   query,
   where,
   getDocs,
+  doc,
+  getDoc,
 } from 'firebase/firestore';
 import type { TaskOccurrence, UserPreferences } from '../models';
 import { formatDateInput, addDays } from '../utils/date';
@@ -22,6 +24,23 @@ Notifications.setNotificationHandler({
   }),
 });
 
+export async function ensureChatNotificationChannel(): Promise<void> {
+  if (Platform.OS === 'android') {
+    try {
+      await Notifications.setNotificationChannelAsync('chat-messages', {
+        name: 'Chat Messages',
+        importance: AndroidImportance.MAX,
+        enableVibrate: true,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#32D57B',
+        sound: 'default',
+      });
+    } catch (e) {
+      console.warn('Failed to configure Android chat notification channel:', e);
+    }
+  }
+}
+
 export async function ensureNotificationChannel(prefs?: UserPreferences | null): Promise<void> {
   if (Platform.OS === 'android') {
     try {
@@ -35,6 +54,7 @@ export async function ensureNotificationChannel(prefs?: UserPreferences | null):
         lightColor: '#32D57B',
         sound: soundEnabled ? 'default' : null,
       });
+      await ensureChatNotificationChannel();
     } catch (e) {
       console.warn('Failed to configure Android notification channel:', e);
     }
@@ -288,7 +308,17 @@ export function handleNotificationResponse(
   response: Notifications.NotificationResponse,
   router: any
 ): void {
-  const data = response.notification.request.content.data as any;
+  const data = response?.notification?.request?.content?.data as any;
+  if (data?.type === 'chat_message' && data?.relationshipId) {
+    router.push({
+      pathname: '/conversation',
+      params: {
+        relationshipId: data.relationshipId,
+        name: data.senderName ?? 'Chat',
+      },
+    });
+    return;
+  }
   if (data?.occurrenceId) {
     router.navigate('/(parent-tabs)');
   }
@@ -312,7 +342,11 @@ export async function registerPushTokenForUser(uid: string): Promise<string | nu
     const hasPermission = await getNotificationPermissionStatus();
     if (!hasPermission) return null;
 
-    const tokenData = await Notifications.getExpoPushTokenAsync().catch(() => null);
+    await ensureNotificationChannel();
+    await ensureChatNotificationChannel();
+
+    const projectId = '108c3295-3110-4804-923b-201234b426a2';
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId }).catch(() => null);
     if (tokenData?.data) {
       await updateUserProfile(uid, { pushToken: tokenData.data });
       return tokenData.data;
@@ -321,6 +355,110 @@ export async function registerPushTokenForUser(uid: string): Promise<string | nu
     console.warn('registerPushTokenForUser skipped or unsupported:', err);
   }
   return null;
+}
+
+export async function sendExpoPushNotification(payload: {
+  to: string;
+  title: string;
+  body: string;
+  data?: Record<string, any>;
+  channelId?: string;
+  sound?: string;
+  priority?: 'default' | 'normal' | 'high';
+}): Promise<boolean> {
+  try {
+    if (!payload.to || typeof payload.to !== 'string') return false;
+    if (!payload.to.startsWith('ExponentPushToken[') && !payload.to.startsWith('ExpoPushToken[')) {
+      console.warn('Invalid Expo push token format:', payload.to);
+      return false;
+    }
+
+    if (typeof fetch !== 'function') {
+      return false;
+    }
+
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: payload.to,
+        title: payload.title,
+        body: payload.body,
+        sound: payload.sound ?? 'default',
+        channelId: payload.channelId ?? 'chat-messages',
+        priority: payload.priority ?? 'high',
+        data: payload.data ?? {},
+      }),
+    });
+
+    return response.ok;
+  } catch (err) {
+    console.warn('Failed to send Expo push notification:', err);
+    return false;
+  }
+}
+
+export async function sendChatPushNotification(params: {
+  relationshipId: string;
+  senderId: string;
+  text: string;
+  messageType?: 'text' | 'audio' | 'image';
+  senderName?: string;
+}): Promise<void> {
+  try {
+    const db = getFirebaseDb();
+    const relSnap = await getDoc(doc(db, 'relationships', params.relationshipId));
+    if (!relSnap.exists()) return;
+    const relData = typeof relSnap.data === 'function' ? relSnap.data() : (relSnap as any)?.data;
+    if (!relData || relData.status !== 'active') return;
+
+    const recipientUid =
+      relData.parentId === params.senderId ? relData.childId : relData.parentId;
+    if (!recipientUid) return;
+
+    const recipientSnap = await getDoc(doc(db, 'users', recipientUid));
+    if (!recipientSnap.exists()) return;
+    const recipientData = typeof recipientSnap.data === 'function' ? recipientSnap.data() : (recipientSnap as any)?.data;
+    const pushToken = recipientData?.pushToken;
+    if (!pushToken) return;
+
+    let senderName = params.senderName;
+    if (!senderName) {
+      const senderSnap = await getDoc(doc(db, 'users', params.senderId));
+      if (senderSnap.exists()) {
+        const senderData = typeof senderSnap.data === 'function' ? senderSnap.data() : (senderSnap as any)?.data;
+        senderName = senderData?.name;
+      }
+    }
+    const finalSenderName = senderName || 'AlwaysWithYou';
+
+    const bodyText =
+      params.messageType === 'audio'
+        ? '🎤 Voice message'
+        : params.messageType === 'image'
+        ? '📷 Photo'
+        : params.text.trim();
+
+    await sendExpoPushNotification({
+      to: pushToken,
+      title: finalSenderName,
+      body: bodyText,
+      data: {
+        type: 'chat_message',
+        relationshipId: params.relationshipId,
+        senderId: params.senderId,
+        senderName: finalSenderName,
+      },
+      channelId: 'chat-messages',
+      priority: 'high',
+    });
+  } catch (err) {
+    console.warn('sendChatPushNotification error:', err);
+  }
 }
 
 export async function deliverCaregiverEscalationAlert(

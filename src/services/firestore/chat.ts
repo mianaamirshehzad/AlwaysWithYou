@@ -12,12 +12,54 @@ import {
   onSnapshot,
   limit,
   updateDoc,
+  startAfter,
 } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirebaseDb } from '../firebase';
+import { sendChatPushNotification } from '../notifications';
 import type { Message } from '../../models';
 
 const CONVERSATIONS_COLLECTION = 'conversations';
 const MESSAGES_COLLECTION = 'messages';
+
+export const CHAT_PAGE_SIZE = 20;
+export const CHAT_CACHE_KEY_PREFIX = '@chat_cached_messages_';
+
+/**
+ * Loads locally cached messages (10 - 20 messages) for immediate conversation rendering.
+ */
+export async function getCachedMessages(relationshipId: string): Promise<Message[]> {
+  try {
+    const raw = await AsyncStorage.getItem(`${CHAT_CACHE_KEY_PREFIX}${relationshipId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  } catch (err) {
+    console.warn('Failed to read cached chat messages:', err);
+    return [];
+  }
+}
+
+/**
+ * Saves the latest 10 - 20 messages locally in the app for offline hydration and instant render.
+ */
+export async function saveCachedMessages(
+  relationshipId: string,
+  messages: Message[],
+  maxCount: number = CHAT_PAGE_SIZE
+): Promise<void> {
+  try {
+    if (!relationshipId || !Array.isArray(messages)) return;
+    const toStore = messages.slice(-maxCount);
+    await AsyncStorage.setItem(
+      `${CHAT_CACHE_KEY_PREFIX}${relationshipId}`,
+      JSON.stringify(toStore)
+    );
+  } catch (err) {
+    console.warn('Failed to save cached chat messages:', err);
+  }
+}
 
 export async function getOrCreateConversation(relationshipId: string): Promise<string> {
   const db = getFirebaseDb();
@@ -45,6 +87,7 @@ export async function sendMessage(
     imageUrl?: string;
     audioUrl?: string;
     audioDurationMs?: number;
+    senderName?: string;
   }
 ): Promise<string> {
   const db = getFirebaseDb();
@@ -79,6 +122,18 @@ export async function sendMessage(
     lastMessage: previewText,
     lastMessageAt: serverTimestamp(),
   });
+
+  // Trigger push notification in background for recipient (when app is in background or killed)
+  sendChatPushNotification({
+    relationshipId,
+    senderId,
+    text,
+    messageType: extra?.messageType,
+    senderName: extra?.senderName,
+  }).catch((err) => {
+    console.warn('sendChatPushNotification error:', err);
+  });
+
   return ref.id;
 }
 
@@ -91,6 +146,7 @@ export async function sendMessageWithRetry(
     imageUrl?: string;
     audioUrl?: string;
     audioDurationMs?: number;
+    senderName?: string;
   },
   maxRetries: number = 2
 ): Promise<string> {
@@ -110,8 +166,8 @@ export async function sendMessageWithRetry(
 
 export function subscribeToMessages(
   relationshipId: string,
-  callback: (messages: Message[]) => void,
-  maxMessages: number = 100,
+  callback: (messages: Message[], oldestDocSnapshot?: any) => void,
+  maxMessages: number = CHAT_PAGE_SIZE,
   onError?: (error: Error) => void
 ): () => void {
   const db = getFirebaseDb();
@@ -124,16 +180,68 @@ export function subscribeToMessages(
   return onSnapshot(
     q,
     (snapshot) => {
-      const messages = snapshot.docs
+      const docs = snapshot.docs;
+      const messages = docs
         .map((d) => ({ id: d.id, ...d.data() } as Message))
         .reverse();
-      callback(messages);
+      const oldestDocSnapshot = docs.length > 0 ? docs[docs.length - 1] : undefined;
+      callback(messages, oldestDocSnapshot);
     },
     (error) => {
       console.error('subscribeToMessages error:', error);
       if (onError) onError(error);
     }
   );
+}
+
+export type PaginatedMessagesResult = {
+  messages: Message[];
+  hasMore: boolean;
+  oldestDoc?: any;
+};
+
+/**
+ * Fetches older messages backwards (pagination) when user scrolls upwards.
+ */
+export async function getOlderMessages(
+  relationshipId: string,
+  cursor: any,
+  pageSize: number = CHAT_PAGE_SIZE
+): Promise<PaginatedMessagesResult> {
+  const db = getFirebaseDb();
+  let q;
+
+  if (cursor) {
+    q = query(
+      collection(db, MESSAGES_COLLECTION),
+      where('conversationId', '==', relationshipId),
+      orderBy('createdAt', 'desc'),
+      startAfter(cursor),
+      limit(pageSize)
+    );
+  } else {
+    q = query(
+      collection(db, MESSAGES_COLLECTION),
+      where('conversationId', '==', relationshipId),
+      orderBy('createdAt', 'desc'),
+      limit(pageSize)
+    );
+  }
+
+  const snapshot = await getDocs(q);
+  const docs = snapshot.docs;
+  const messages = docs
+    .map((d) => ({ id: d.id, ...d.data() } as Message))
+    .reverse();
+
+  const oldestDoc = docs.length > 0 ? docs[docs.length - 1] : undefined;
+  const hasMore = docs.length === pageSize;
+
+  return {
+    messages,
+    hasMore,
+    oldestDoc,
+  };
 }
 
 export async function getLastMessages(

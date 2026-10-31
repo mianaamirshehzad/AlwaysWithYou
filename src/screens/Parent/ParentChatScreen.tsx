@@ -16,6 +16,7 @@ import Colors from '@/src/assets/Colors';
 import EmptyState from '@/src/components/EmptyState';
 import ErrorBanner from '@/src/components/ErrorBanner';
 import { useRelationships } from '@/src/context/RelationshipsContext';
+import { useUnreadChat } from '@/src/context/UnreadChatContext';
 import { subscribeToConversations, type Conversation } from '@/src/services/firestore/chat';
 import { getUserProfilesBatch } from '@/src/services/firestore/users';
 import { formatConversationTime, getInitials } from '@/src/utils/date';
@@ -24,6 +25,7 @@ import type { Relationship, UserProfile } from '@/src/models';
 export default function ParentChatScreen() {
   const router = useRouter();
   const { relationships, loading: relsLoading, error: relsError, refresh } = useRelationships();
+  const { getUnreadCount } = useUnreadChat();
 
   const [childProfiles, setChildProfiles] = React.useState<Map<string, UserProfile>>(new Map());
   const [conversationsMap, setConversationsMap] = React.useState<Map<string, Conversation>>(new Map());
@@ -170,6 +172,7 @@ export default function ParentChatScreen() {
                   const name = profile?.name ?? 'Caregiver';
                   const photoUrl = profile?.photoUrl;
                   const isAudio = conversation.lastMessage?.includes('Voice message');
+                  const unreadCount = getUnreadCount(relationship.id);
 
                   return (
                     <Pressable
@@ -212,10 +215,18 @@ export default function ParentChatScreen() {
                             style={[
                               styles.lastMessageText,
                               isAudio && styles.lastMessageAudio,
+                              unreadCount > 0 && styles.lastMessageUnread,
                             ]}
                             numberOfLines={1}>
                             {conversation.lastMessage ?? 'No messages yet'}
                           </Text>
+                          {unreadCount > 0 ? (
+                            <View style={styles.unreadBadge}>
+                              <Text style={styles.unreadBadgeText}>
+                                {unreadCount > 99 ? '99+' : unreadCount}
+                              </Text>
+                            </View>
+                          ) : null}
                         </View>
                       </View>
 
@@ -485,6 +496,26 @@ const styles = StyleSheet.create({
     color: Colors.alpha.white70,
     fontSize: 13,
     fontWeight: '500',
+    flex: 1,
+  },
+  lastMessageUnread: {
+    color: Colors.dashboard.text,
+    fontWeight: '700',
+  },
+  unreadBadge: {
+    backgroundColor: Colors.dashboard.accent,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
+  },
+  unreadBadgeText: {
+    color: Colors.dashboard.bg,
+    fontSize: 11,
+    fontWeight: '900',
   },
   lastMessageAudio: {
     color: Colors.dashboard.accent,

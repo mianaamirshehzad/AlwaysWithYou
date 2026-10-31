@@ -17,9 +17,11 @@ import { UserProfileProvider } from '../src/context/UserProfileContext';
 import { RelationshipsProvider, useRelationships } from '../src/context/RelationshipsContext';
 import { PreferencesProvider } from '../src/context/PreferencesContext';
 import { NetworkProvider, useNetwork } from '../src/context/NetworkContext';
+import { UnreadChatProvider } from '../src/context/UnreadChatContext';
 import NoInternetScreen from '../src/components/NoInternetScreen';
 import NotificationPermissionGate from '../src/components/NotificationPermissionGate';
 import { logOut } from '../src/services/auth';
+import { registerPushTokenForUser, handleNotificationResponse } from '../src/services/notifications';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -68,9 +70,11 @@ function RootLayoutNav() {
         <UserProfileProvider>
           <PreferencesProvider>
             <RelationshipsProvider>
-              <NetworkProvider>
-                <RootNavigator />
-              </NetworkProvider>
+              <UnreadChatProvider>
+                <NetworkProvider>
+                  <RootNavigator />
+                </NetworkProvider>
+              </UnreadChatProvider>
             </RelationshipsProvider>
           </PreferencesProvider>
         </UserProfileProvider>
@@ -80,12 +84,38 @@ function RootLayoutNav() {
 }
 
 function RootNavigator() {
-  const { status, role, roleError, retryLoadRole, hasConnected } = useAuth();
+  const { status, role, roleError, retryLoadRole, hasConnected, user } = useAuth();
   const { relationships, loading: relationshipsLoading } = useRelationships();
   const { isConnected, checkConnectivity } = useNetwork();
   const [hasNotificationPermission, setHasNotificationPermission] = React.useState<boolean>(true);
   const router = useRouter();
   const segments = useSegments();
+
+  // Auto-register push token when user is authenticated
+  React.useEffect(() => {
+    if (user?.uid) {
+      registerPushTokenForUser(user.uid).catch(() => {});
+    }
+  }, [user?.uid]);
+
+  // Handle notification response routing when tapped (foreground, background, or killed)
+  React.useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      handleNotificationResponse(response, router);
+    });
+
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (response) {
+          handleNotificationResponse(response, router);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      subscription.remove();
+    };
+  }, [router]);
 
   // Enforce notification permissions check
   React.useEffect(() => {

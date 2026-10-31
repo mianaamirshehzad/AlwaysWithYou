@@ -3,6 +3,7 @@ import * as React from 'react';
 import {
   Image,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -18,6 +19,8 @@ type Props = {
   loading: boolean;
   onSelectParent: (uid: string) => void;
   onAddNewParent: () => void;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 export default function ParentDropdownSelector({
@@ -26,8 +29,27 @@ export default function ParentDropdownSelector({
   loading,
   onSelectParent,
   onAddNewParent,
+  isOpen: controlledIsOpen,
+  onOpenChange,
 }: Props) {
-  const [isOpen, setIsOpen] = React.useState(false);
+  const [internalIsOpen, setInternalIsOpen] = React.useState(false);
+  const isControlled = controlledIsOpen !== undefined;
+  const isOpen = isControlled ? controlledIsOpen : internalIsOpen;
+
+  const handleToggle = () => {
+    const next = !isOpen;
+    if (!isControlled) {
+      setInternalIsOpen(next);
+    }
+    onOpenChange?.(next);
+  };
+
+  const handleClose = () => {
+    if (!isControlled) {
+      setInternalIsOpen(false);
+    }
+    onOpenChange?.(false);
+  };
 
   const selectedUid = selectedParent?.profile?.uid ?? selectedParent?.relationship.parentId ?? null;
   const parentName =
@@ -38,7 +60,7 @@ export default function ParentDropdownSelector({
     <View style={styles.wrapper}>
       {/* Trigger Chip */}
       <Pressable
-        onPress={() => setIsOpen((prev) => !prev)}
+        onPress={handleToggle}
         accessibilityRole="button"
         accessibilityLabel="Select parent"
         style={({ pressed }) => [
@@ -70,7 +92,7 @@ export default function ParentDropdownSelector({
         </View>
       </Pressable>
 
-      {/* Dropdown Menu */}
+      {/* Dropdown Menu - Distinct Dark Slate/Midnight Navy theme */}
       {isOpen && (
         <View style={styles.dropdownMenu}>
           <Text style={styles.dropdownHeader}>CONNECTED PARENTS</Text>
@@ -80,89 +102,93 @@ export default function ParentDropdownSelector({
               <Text style={styles.emptyText}>No parents connected yet.</Text>
             </View>
           ) : (
-            parents.map((p) => {
-              const uid = p.profile?.uid ?? p.relationship.parentId;
-              const name = p.profile?.name ?? 'Parent';
-              const photo = p.profile?.photoUrl ?? null;
-              const isSelected = uid === selectedUid;
+            <ScrollView
+              style={styles.optionsList}
+              contentContainerStyle={styles.optionsListContent}
+              bounces={false}
+              nestedScrollEnabled
+              showsVerticalScrollIndicator={parents.length > 4}>
+              {parents.map((p) => {
+                const uid = p.profile?.uid ?? p.relationship.parentId;
+                const name = p.profile?.name ?? 'Parent';
+                const photo = p.profile?.photoUrl ?? null;
+                const isSelected = uid === selectedUid;
 
-              return (
-                <Pressable
-                  key={p.relationship.id}
-                  onPress={() => {
-                    onSelectParent(uid);
-                    setIsOpen(false);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={name}
-                  style={({ pressed }) => [
-                    styles.parentOption,
-                    isSelected && styles.parentOptionSelected,
-                    { opacity: pressed ? 0.8 : 1 },
-                  ]}>
-                  <View style={styles.optionAvatar}>
-                    {photo ? (
-                      <Image source={{ uri: photo }} style={styles.avatarImg} />
+                return (
+                  <Pressable
+                    key={p.relationship.id}
+                    onPress={() => {
+                      onSelectParent(uid);
+                      handleClose();
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={name}
+                    style={({ pressed }) => [
+                      styles.parentOption,
+                      isSelected && styles.parentOptionSelected,
+                      { opacity: pressed ? 0.8 : 1 },
+                    ]}>
+                    <View style={[styles.optionAvatar, isSelected && styles.optionAvatarSelected]}>
+                      {photo ? (
+                        <Image source={{ uri: photo }} style={styles.avatarImg} />
+                      ) : (
+                        <Text
+                          style={[
+                            styles.optionAvatarText,
+                            isSelected && styles.optionAvatarTextSelected,
+                          ]}>
+                          {getInitials(name)}
+                        </Text>
+                      )}
+                    </View>
+
+                    <View style={styles.optionTextCol}>
+                      <Text
+                        style={[
+                          styles.optionName,
+                          isSelected && styles.optionNameSelected,
+                        ]}
+                        numberOfLines={1}>
+                        {name}
+                      </Text>
+                    </View>
+
+                    {isSelected ? (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={20}
+                        color={Colors.dashboard.accent}
+                      />
                     ) : (
-                      <Text style={styles.optionAvatarText}>{getInitials(name)}</Text>
+                      <Ionicons
+                        name="ellipse-outline"
+                        size={18}
+                        color="rgba(255, 255, 255, 0.25)"
+                      />
                     )}
-                  </View>
-
-                  <View style={styles.optionTextCol}>
-                    <Text
-                      style={[
-                        styles.optionName,
-                        isSelected && styles.optionNameSelected,
-                      ]}
-                      numberOfLines={1}>
-                      {name}
-                    </Text>
-                    <Text style={styles.optionSub}>
-                      {isSelected ? 'Active Profile' : 'Tap to switch'}
-                    </Text>
-                  </View>
-
-                  {isSelected ? (
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={22}
-                      color={Colors.dashboard.accent}
-                    />
-                  ) : (
-                    <Ionicons
-                      name="ellipse-outline"
-                      size={20}
-                      color={Colors.alpha.white30}
-                    />
-                  )}
-                </Pressable>
-              );
-            })
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           )}
 
           {/* Divider */}
           <View style={styles.divider} />
 
-          {/* Add New Parent Option */}
+          {/* Add New Parent Option (subtle tertiary action with muted colors) */}
           <Pressable
             onPress={() => {
-              setIsOpen(false);
+              handleClose();
               onAddNewParent();
             }}
             accessibilityRole="button"
             accessibilityLabel="Add new parent"
             style={({ pressed }) => [
               styles.addNewParentBtn,
-              { opacity: pressed ? 0.8 : 1 },
+              { opacity: pressed ? 0.6 : 1 },
             ]}>
-            <View style={styles.addIconCircle}>
-              <Ionicons name="person-add-outline" size={18} color={Colors.dashboard.accent} />
-            </View>
-            <View style={styles.optionTextCol}>
-              <Text style={styles.addNewParentText}>+ Add New Parent</Text>
-              <Text style={styles.addNewParentSub}>Invite and link with a 6-digit code</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={Colors.alpha.white45} />
+            <Ionicons name="person-add-outline" size={16} color="rgba(255, 255, 255, 0.50)" />
+            <Text style={styles.addNewParentText}>+ Add New Parent</Text>
           </Pressable>
         </View>
       )}
@@ -174,7 +200,6 @@ const styles = StyleSheet.create({
   wrapper: {
     position: 'relative',
     zIndex: 100,
-    marginBottom: 14,
   },
   parentChip: {
     flexDirection: 'row',
@@ -188,9 +213,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   parentChipOpen: {
-    borderColor: Colors.dashboard.accentSoftBorder,
-    borderBottomLeftRadius: 10,
-    borderBottomRightRadius: 10,
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
   parentAvatar: {
     width: 44,
@@ -237,115 +261,117 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dropdownMenu: {
-    marginTop: 6,
-    backgroundColor: Colors.dashboard.surfaceStrong,
-    borderRadius: 20,
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    marginTop: 8,
+    backgroundColor: '#151E2B', // Distinct Dark Slate / Midnight Navy color (diverging from app dashboard green #071F19)
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: Colors.dashboard.accentSoftBorder,
-    paddingHorizontal: 12,
-    paddingVertical: 14,
-    gap: 6,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    gap: 4,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 18,
+    elevation: 16,
+    zIndex: 1000,
   },
   dropdownHeader: {
-    color: Colors.alpha.white45,
+    color: 'rgba(255, 255, 255, 0.45)',
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '700',
     letterSpacing: 0.8,
-    paddingHorizontal: 8,
-    paddingBottom: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  optionsList: {
+    maxHeight: 220,
+  },
+  optionsListContent: {
+    gap: 4,
   },
   emptyWrap: {
     paddingVertical: 12,
     alignItems: 'center',
   },
   emptyText: {
-    color: Colors.alpha.white55,
+    color: 'rgba(255, 255, 255, 0.50)',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
   },
   parentOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 9,
     paddingHorizontal: 10,
-    borderRadius: 14,
+    borderRadius: 12,
     gap: 12,
   },
   parentOptionSelected: {
-    backgroundColor: 'rgba(52, 211, 153, 0.10)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderWidth: 1,
-    borderColor: Colors.dashboard.accentSoftBorder,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   optionAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.dashboard.surface,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#222E3F',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  optionAvatarSelected: {
+    borderWidth: 1,
+    borderColor: Colors.dashboard.accent,
+  },
   optionAvatarText: {
-    color: Colors.dashboard.text,
-    fontWeight: '800',
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontWeight: '700',
     fontSize: 13,
+  },
+  optionAvatarTextSelected: {
+    color: Colors.dashboard.accent,
+    fontWeight: '800',
   },
   optionTextCol: {
     flex: 1,
-    gap: 1,
+    justifyContent: 'center',
   },
   optionName: {
-    color: Colors.dashboard.text,
+    color: 'rgba(255, 255, 255, 0.85)',
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   optionNameSelected: {
-    color: Colors.dashboard.accent,
-    fontWeight: '900',
-  },
-  optionSub: {
-    color: Colors.alpha.white45,
-    fontSize: 11,
-    fontWeight: '600',
+    color: '#FFFFFF',
+    fontWeight: '800',
   },
   divider: {
     height: 1,
-    backgroundColor: Colors.alpha.white08,
-    marginVertical: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    marginVertical: 4,
+    marginHorizontal: 6,
   },
   addNewParentBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: 14,
-    backgroundColor: 'rgba(52, 211, 153, 0.08)',
-    borderWidth: 1,
-    borderColor: Colors.dashboard.accentSoftBorder,
-    gap: 12,
-  },
-  addIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.dashboard.accentIconBg,
-    alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    gap: 8,
+    // Very subtle, less prominent styling (no emerald background, no heavy border)
+    backgroundColor: 'transparent',
   },
   addNewParentText: {
-    color: Colors.dashboard.accent,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  addNewParentSub: {
-    color: Colors.alpha.white55,
-    fontSize: 11,
-    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.55)',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
 });
-

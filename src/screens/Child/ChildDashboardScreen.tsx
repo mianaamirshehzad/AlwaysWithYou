@@ -43,6 +43,7 @@ export default function ChildDashboardScreen() {
   const [inviteCode, setInviteCode] = React.useState<string | null>(null);
   const [generatingInvite, setGeneratingInvite] = React.useState(false);
   const [inviteError, setInviteError] = React.useState<string | null>(null);
+  const [isParentDropdownOpen, setIsParentDropdownOpen] = React.useState(false);
 
   // Quick Send confirmation state
   const [quickSendModal, setQuickSendModal] = React.useState<{
@@ -237,7 +238,7 @@ export default function ChildDashboardScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.screen}>
-        <View style={styles.header}>
+        <View style={[styles.header, isParentDropdownOpen && styles.headerOpen]}>
           <View style={styles.topBar}>
             <Text style={styles.topBarTitle}>Dashboard</Text>
             <View style={styles.topBarRight}>
@@ -250,16 +251,19 @@ export default function ChildDashboardScreen() {
               </Pressable>
             </View>
           </View>
-        </View>
 
-        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
           <ParentDropdownSelector
             parents={parents}
             selectedParent={selectedParent}
             loading={relationshipsLoading}
             onSelectParent={setSelectedParentId}
             onAddNewParent={handleOpenInvite}
+            isOpen={isParentDropdownOpen}
+            onOpenChange={setIsParentDropdownOpen}
           />
+        </View>
+
+        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
           {relationshipsLoading && !selectedParent ? (
             <View style={styles.dashboardLoadingWrap}>
@@ -314,6 +318,16 @@ export default function ChildDashboardScreen() {
             </>
           )}
         </ScrollView>
+
+        {/* Dimming overlay on the other content when caring-for dropdown is open */}
+        {isParentDropdownOpen && (
+          <Pressable
+            style={styles.dropdownBackdrop}
+            onPress={() => setIsParentDropdownOpen(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close parent selection overlay"
+          />
+        )}
 
         {relationshipId ? (
           <FloatingActionButton
@@ -499,8 +513,19 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: Colors.dashboard.bg,
     paddingHorizontal: 18,
-    paddingBottom: 6,
-    zIndex: 10,
+    paddingBottom: 8,
+    zIndex: 50,
+    elevation: 10,
+  },
+  headerOpen: {
+    zIndex: 60,
+    elevation: 14,
+  },
+  dropdownBackdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    zIndex: 40,
+    elevation: 8,
   },
   container: {
     flexGrow: 1,

@@ -19,6 +19,8 @@ jest.mock('firebase/firestore', () => ({
   limit: jest.fn(),
   serverTimestamp: () => 'SERVER_TS',
   onSnapshot: jest.fn(),
+  getDocs: jest.fn(async () => ({ docs: [] })),
+  startAfter: jest.fn((cursor) => ({ __startAfter: cursor })),
 }));
 
 jest.mock('../services/firebase', () => ({
@@ -210,7 +212,7 @@ describe('Chat Feature & Bottom Tab Keyboard Hiding', () => {
       expect(content).toContain('modalImage');
     });
 
-    it('verifies WhatsApp-style mic and send transformation', () => {
+    it('verifies WhatsApp-style mic and send transformation without loading delay and dynamic input width', () => {
       const screenPath = path.resolve(__dirname, '../screens/Chat/ConversationScreen.tsx');
       const content = fs.readFileSync(screenPath, 'utf8');
 
@@ -220,6 +222,16 @@ describe('Chat Feature & Bottom Tab Keyboard Hiding', () => {
       expect(content).toContain('accessibilityLabel="Send message"');
       expect(content).toContain('name="mic"');
       expect(content).toContain('name="send"');
+
+      // Left camera icon hidden when user types to give text input full width
+      expect(content).toContain('!hasText && (');
+      expect(content).toContain('accessibilityLabel="Attach photo"');
+
+      // Uses uploadChatMedia for reliable image and audio delivery
+      expect(content).toContain('uploadChatMedia');
+
+      // Audio playback relies on didFinish before resetting playback state
+      expect(content).toContain('status.didFinish');
     });
 
     it('verifies WhatsApp-style voice recording bar and audio playback bubbles', () => {
@@ -381,6 +393,276 @@ describe('Chat Feature & Bottom Tab Keyboard Hiding', () => {
       // Used in ChildDashboardScreen
       expect(dashboardContent).toContain('<ParentDropdownSelector');
       expect(dashboardContent).toContain('onAddNewParent={handleOpenInvite}');
+    });
+
+    it('verifies Caring for dropdown UX enhancements (distinct color, no subtitle clutter, screen overlay, subtle add parent)', () => {
+      const componentPath = path.resolve(__dirname, '../components/ParentDropdownSelector.tsx');
+      const dashboardPath = path.resolve(__dirname, '../screens/Child/ChildDashboardScreen.tsx');
+      const componentContent = fs.readFileSync(componentPath, 'utf8');
+      const dashboardContent = fs.readFileSync(dashboardPath, 'utf8');
+
+      // 1. Opened view uses distinct color (dark slate/midnight navy #151E2B)
+      expect(componentContent).toContain('#151E2B');
+
+      // 2. No "Active Profile" or "Tap to switch" subtitles under the profiles
+      expect(componentContent).not.toContain('Active Profile');
+      expect(componentContent).not.toContain('Tap to switch');
+
+      // 3. Display an overlay on the other content on this screen
+      expect(dashboardContent).toContain('isParentDropdownOpen');
+      expect(dashboardContent).toContain('dropdownBackdrop');
+      expect(dashboardContent).toContain('Close parent selection overlay');
+
+      // 4. Subtle, less prominent styling for + Add New Parent
+      expect(componentContent).toContain('addNewParentBtn');
+      expect(componentContent).not.toContain('Invite and link with a 6-digit code');
+    });
+  });
+
+  describe('Chat Push Notifications & Foreground Unread Counters', () => {
+    it('verifies Android chat-messages notification channel with MAX importance is configured', async () => {
+      const { Platform } = require('react-native');
+      const originalOS = Platform.OS;
+      Platform.OS = 'android';
+
+      const { ensureChatNotificationChannel } = require('../services/notifications');
+      const Notifications = require('expo-notifications');
+
+      try {
+        await ensureChatNotificationChannel();
+
+        // Verified setNotificationChannelAsync was called with 'chat-messages'
+        expect(Notifications.setNotificationChannelAsync).toHaveBeenCalledWith(
+          'chat-messages',
+          expect.objectContaining({
+            name: 'Chat Messages',
+            enableVibrate: true,
+            vibrationPattern: [0, 250, 250, 250],
+          })
+        );
+      } finally {
+        Platform.OS = originalOS;
+      }
+    });
+
+    it('verifies sendExpoPushNotification posts to Expo push service', async () => {
+      const { sendExpoPushNotification } = require('../services/notifications');
+      const originalFetch = global.fetch;
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { status: 'ok' } }),
+      });
+      global.fetch = mockFetch as any;
+
+      try {
+        const sent = await sendExpoPushNotification({
+          to: 'ExponentPushToken[recipient-token-123]',
+          title: 'John',
+          body: 'Hello caregiver',
+          channelId: 'chat-messages',
+        });
+
+        expect(sent).toBe(true);
+        expect(mockFetch).toHaveBeenCalledWith(
+          'https://exp.host/--/api/v2/push/send',
+          expect.objectContaining({
+            method: 'POST',
+            body: expect.stringContaining('"to":"ExponentPushToken[recipient-token-123]"'),
+          })
+        );
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('verifies handleNotificationResponse routes to /conversation on chat notification tap', () => {
+      const { handleNotificationResponse } = require('../services/notifications');
+      const mockRouter = {
+        push: jest.fn(),
+        navigate: jest.fn(),
+      };
+
+      handleNotificationResponse(
+        {
+          notification: {
+            request: {
+              content: {
+                data: {
+                  type: 'chat_message',
+                  relationshipId: 'rel-123',
+                  senderName: 'Sarah',
+                },
+              },
+            },
+          },
+        } as any,
+        mockRouter
+      );
+
+      expect(mockRouter.push).toHaveBeenCalledWith({
+        pathname: '/conversation',
+        params: {
+          relationshipId: 'rel-123',
+          name: 'Sarah',
+        },
+      });
+    });
+
+    it('verifies root layout registers push token and notification tap listeners', () => {
+      const layoutPath = path.resolve(__dirname, '../../app/_layout.tsx');
+      const content = fs.readFileSync(layoutPath, 'utf8');
+
+      expect(content).toContain('UnreadChatProvider');
+      expect(content).toContain('registerPushTokenForUser');
+      expect(content).toContain('addNotificationResponseReceivedListener');
+      expect(content).toContain('getLastNotificationResponseAsync');
+      expect(content).toContain('handleNotificationResponse');
+    });
+
+    it('verifies both child and parent bottom tab bars display unread badge on chat tab', () => {
+      const childTabsPath = path.resolve(__dirname, '../../app/(tabs)/_layout.tsx');
+      const parentTabsPath = path.resolve(__dirname, '../../app/(parent-tabs)/_layout.tsx');
+
+      const childTabsContent = fs.readFileSync(childTabsPath, 'utf8');
+      const parentTabsContent = fs.readFileSync(parentTabsPath, 'utf8');
+
+      // Child tab layout
+      expect(childTabsContent).toContain('useUnreadChat');
+      expect(childTabsContent).toContain('totalUnreadCount');
+      expect(childTabsContent).toMatch(/name="three"[\s\S]*?tabBarBadge:\s*totalUnreadCount\s*>\s*0\s*\?\s*totalUnreadCount\s*:\s*undefined/);
+
+      // Parent tab layout
+      expect(parentTabsContent).toContain('useUnreadChat');
+      expect(parentTabsContent).toContain('totalUnreadCount');
+      expect(parentTabsContent).toMatch(/name="chat"[\s\S]*?tabBarBadge:\s*totalUnreadCount\s*>\s*0\s*\?\s*totalUnreadCount\s*:\s*undefined/);
+    });
+
+    it('verifies child and parent chat screens display unread count badge in previous chat cards', () => {
+      const childChatPath = path.resolve(__dirname, '../screens/Child/ChildChatScreen.tsx');
+      const parentChatPath = path.resolve(__dirname, '../screens/Parent/ParentChatScreen.tsx');
+
+      const childChatContent = fs.readFileSync(childChatPath, 'utf8');
+      const parentChatContent = fs.readFileSync(parentChatPath, 'utf8');
+
+      // Child chat screen
+      expect(childChatContent).toContain('useUnreadChat');
+      expect(childChatContent).toContain('getUnreadCount');
+      expect(childChatContent).toContain('styles.unreadBadge');
+      expect(childChatContent).toContain('styles.unreadBadgeText');
+
+      // Parent chat screen
+      expect(parentChatContent).toContain('useUnreadChat');
+      expect(parentChatContent).toContain('getUnreadCount');
+      expect(parentChatContent).toContain('styles.unreadBadge');
+      expect(parentChatContent).toContain('styles.unreadBadgeText');
+    });
+
+    it('verifies ConversationScreen integrates active conversation reading and marks read', () => {
+      const convScreenPath = path.resolve(__dirname, '../screens/Chat/ConversationScreen.tsx');
+      const content = fs.readFileSync(convScreenPath, 'utf8');
+
+      expect(content).toContain('useUnreadChat');
+      expect(content).toContain('markConversationAsRead');
+      expect(content).toContain('setActiveConversationId');
+      expect(content).toContain('senderName:');
+    });
+
+    it('verifies getTimestampMs in date utils parses timestamps correctly', () => {
+      const { getTimestampMs } = require('../utils/date');
+
+      // Number
+      expect(getTimestampMs(1600000000000)).toBe(1600000000000);
+
+      // Firestore Timestamp object with toMillis()
+      expect(getTimestampMs({ toMillis: () => 1600000005000 })).toBe(1600000005000);
+
+      // Raw seconds/nanoseconds object
+      expect(getTimestampMs({ seconds: 1600000, nanoseconds: 500000000 })).toBe(1600000500);
+
+      // Date string
+      const isoStr = '2026-10-31T04:00:00.000Z';
+      expect(getTimestampMs(isoStr)).toBe(new Date(isoStr).getTime());
+
+      // Null or invalid
+      expect(getTimestampMs(null)).toBe(0);
+      expect(getTimestampMs(undefined)).toBe(0);
+      expect(getTimestampMs('invalid-date-string')).toBe(0);
+    });
+  });
+
+  describe('Chat Inbox Pagination & 10-20 Message Local Caching', () => {
+    it('verifies local cache stores up to 20 messages in AsyncStorage and retrieves them', async () => {
+      const {
+        saveCachedMessages,
+        getCachedMessages,
+        CHAT_CACHE_KEY_PREFIX,
+      } = require('../services/firestore/chat');
+      const AsyncStorage = require('@react-native-async-storage/async-storage');
+
+      const mockRelId = 'rel-local-cache-test';
+      // Create 25 mock messages
+      const mockMessages = Array.from({ length: 25 }, (_, i) => ({
+        id: `msg-${i + 1}`,
+        conversationId: mockRelId,
+        senderId: 'user-1',
+        text: `Message ${i + 1}`,
+        status: 'sent',
+        createdAt: 1700000000000 + i * 1000,
+      }));
+
+      // Save messages - should cap at 20
+      await saveCachedMessages(mockRelId, mockMessages);
+
+      // Check AsyncStorage key
+      const storedRaw = await AsyncStorage.getItem(`${CHAT_CACHE_KEY_PREFIX}${mockRelId}`);
+      expect(storedRaw).toBeTruthy();
+      const parsed = JSON.parse(storedRaw);
+      expect(parsed.length).toBe(20);
+      // Last message should be message 25
+      expect(parsed[parsed.length - 1].id).toBe('msg-25');
+      // Oldest stored should be message 6 (25 - 20 + 1)
+      expect(parsed[0].id).toBe('msg-6');
+
+      // Test getCachedMessages
+      const retrieved = await getCachedMessages(mockRelId);
+      expect(retrieved.length).toBe(20);
+      expect(retrieved[retrieved.length - 1].text).toBe('Message 25');
+    });
+
+    it('verifies getOlderMessages uses startAfter cursor and limits to 20', async () => {
+      const { getOlderMessages, CHAT_PAGE_SIZE } = require('../services/firestore/chat');
+      const firestore = require('firebase/firestore');
+
+      const mockCursor = { id: 'msg-cursor', data: () => ({}) };
+      await getOlderMessages('rel-cursor-test', mockCursor, 20);
+
+      expect(CHAT_PAGE_SIZE).toBe(20);
+      expect(firestore.startAfter).toHaveBeenCalledWith(mockCursor);
+      expect(firestore.limit).toHaveBeenCalledWith(20);
+      expect(firestore.orderBy).toHaveBeenCalledWith('createdAt', 'desc');
+      expect(firestore.where).toHaveBeenCalledWith('conversationId', '==', 'rel-cursor-test');
+    });
+
+    it('verifies ConversationScreen integrates local cache hydration and pagination upwards', () => {
+      const convScreenPath = path.resolve(__dirname, '../screens/Chat/ConversationScreen.tsx');
+      const content = fs.readFileSync(convScreenPath, 'utf8');
+
+      // Local cache integration
+      expect(content).toContain('getCachedMessages');
+      expect(content).toContain('saveCachedMessages');
+
+      // Pagination integration
+      expect(content).toContain('getOlderMessages');
+      expect(content).toContain('handleLoadOlderMessages');
+      expect(content).toContain('hasMoreOlder');
+      expect(content).toContain('loadingOlder');
+
+      // FlatList upwards scroll detection and header
+      expect(content).toContain('onScroll={handleScroll}');
+      expect(content).toContain('ListHeaderComponent={renderListHeader}');
+      expect(content).toContain('Loading earlier messages...');
+      expect(content).toContain('Load earlier messages');
+      expect(content).toContain('Beginning of conversation');
     });
   });
 });

@@ -3,6 +3,7 @@ import { getReactNativePersistence } from '@firebase/auth';
 import { getApps, getApp, initializeApp, type FirebaseApp, type FirebaseOptions } from 'firebase/app';
 import { getAuth, initializeAuth, type Auth, type Persistence } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getStorage, type FirebaseStorage } from 'firebase/storage';
 import { Platform } from 'react-native';
 
 // getReactNativePersistence is not part of the default @firebase/auth type
@@ -65,6 +66,7 @@ function readFirebaseConfig(): FirebaseOptions {
 let firebaseApp: FirebaseApp | null = null;
 let firebaseAuth: Auth | null = null;
 let firebaseDb: Firestore | null = null;
+let firebaseStorage: FirebaseStorage | null = null;
 
 function getFirebaseApp(): FirebaseApp {
   if (firebaseApp === null) {
@@ -91,4 +93,11 @@ function getFirebaseDb(): Firestore {
   return firebaseDb;
 }
 
-export { getFirebaseApp, getFirebaseAuth, getFirebaseDb };
+function getFirebaseStorage(): FirebaseStorage {
+  if (firebaseStorage === null) {
+    firebaseStorage = getStorage(getFirebaseApp());
+  }
+  return firebaseStorage;
+}
+
+export { getFirebaseApp, getFirebaseAuth, getFirebaseDb, getFirebaseStorage };

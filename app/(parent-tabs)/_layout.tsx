@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/src/assets/Colors';
+import { useUnreadChat } from '@/src/context/UnreadChatContext';
 
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof Ionicons>['name'];
@@ -14,6 +15,7 @@ function TabBarIcon(props: {
 }
 
 export default function ParentTabLayout() {
+  const { totalUnreadCount } = useUnreadChat();
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(
     insets.bottom,
@@ -58,6 +60,13 @@ export default function ParentTabLayout() {
         options={{
           title: 'Chat',
           tabBarHideOnKeyboard: true,
+          tabBarBadge: totalUnreadCount > 0 ? totalUnreadCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: Colors.dashboard.accent,
+            color: Colors.dashboard.bg,
+            fontSize: 10,
+            fontWeight: 'bold',
+          },
           tabBarIcon: ({ color }) => <TabBarIcon name="chatbubble-ellipses-outline" color={color} />,
         }}
       />

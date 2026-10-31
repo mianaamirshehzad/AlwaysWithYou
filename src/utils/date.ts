@@ -67,14 +67,24 @@ export function getInitials(name: string): string {
   return (first + last).toUpperCase();
 }
 
+export function getTimestampMs(timestamp: any): number {
+  if (!timestamp) return 0;
+  if (typeof timestamp === 'object' && typeof timestamp.toMillis === 'function') {
+    return timestamp.toMillis();
+  }
+  if (typeof timestamp === 'number') {
+    return timestamp;
+  }
+  if (typeof timestamp?.seconds === 'number') {
+    return timestamp.seconds * 1000 + Math.floor((timestamp.nanoseconds || 0) / 1000000);
+  }
+  const parsed = new Date(timestamp).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
 export function formatRelativeTime(timestamp: any): string {
   if (!timestamp) return '';
-  const ms =
-    typeof timestamp === 'object' && 'toMillis' in timestamp
-      ? (timestamp as any).toMillis()
-      : typeof timestamp === 'number'
-      ? timestamp
-      : new Date(timestamp as any).getTime();
+  const ms = getTimestampMs(timestamp);
   if (!ms) return '';
   const diff = Date.now() - ms;
   const minutes = Math.floor(diff / 60000);
@@ -89,13 +99,8 @@ export function formatRelativeTime(timestamp: any): string {
 
 export function formatConversationTime(timestamp: any): string {
   if (!timestamp) return '';
-  const ms =
-    typeof timestamp === 'object' && 'toMillis' in timestamp
-      ? (timestamp as any).toMillis()
-      : typeof timestamp === 'number'
-      ? timestamp
-      : new Date(timestamp as any).getTime();
-  if (!ms || Number.isNaN(ms)) return '';
+  const ms = getTimestampMs(timestamp);
+  if (!ms) return '';
   const date = new Date(ms);
   const now = new Date();
   if (date.toDateString() === now.toDateString()) {

@@ -115,7 +115,7 @@ export default function QuickSendConfirmModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
